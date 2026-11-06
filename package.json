@@ -1,0 +1,45 @@
+{
+  "name": "ai-interviewer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "validate:bank": "tsx scripts/validate-bank.ts",
+    "validate:workers": "tsx scripts/validate-workers.ts",
+    "validate": "npm run validate:bank && npm run validate:workers && npm run validate:calibration && npm run validate:timer && npm run validate:solutions && npm run validate:progress && npm run validate:crash && npm run validate:cancel && npm run validate:verdict && npm run validate:recovery",
+    "validate:calibration": "tsx scripts/validate-calibration.ts",
+    "validate:timer": "tsx scripts/validate-timer.ts",
+    "dev:debug": "INTERVIEW_DEBUG_LOG=1 next dev -p 3100",
+    "validate:solutions": "tsx scripts/validate-solutions.ts",
+    "validate:progress": "tsx scripts/validate-progress.ts",
+    "validate:crash": "tsx scripts/validate-crashwatch.ts",
+    "validate:cancel": "tsx scripts/validate-cancel.ts",
+    "validate:verdict": "tsx scripts/validate-verdict.ts",
+    "validate:recovery": "tsx scripts/validate-recovery.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@monaco-editor/react": "^4.7.0",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.13",
+    "typescript": "^5"
+  }
+}

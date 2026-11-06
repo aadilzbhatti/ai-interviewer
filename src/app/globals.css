@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --bg: #0b0f14;
+  --panel: #121820;
+  --panel-2: #171f29;
+  --line: #232d3a;
+  --text: #e6edf3;
+  --muted: #8b9bb0;
+  --accent: #5b9dff;
+  --ok: #3fb950;
+  --bad: #f85149;
+  --warn: #d29922;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+}
+
+* {
+  border-color: var(--line);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3644;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prose-chat {
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.prose-chat p {
+  margin: 0 0 0.6em;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0 0 0.6em 1.2em;
+  list-style: revert;
+}
+.prose-chat li {
+  margin: 0.2em 0;
+}
+.prose-chat code {
+  background: #0b0f14;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.prose-chat pre {
+  background: #0b0f14;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin: 0 0 0.6em;
+}
+.prose-chat pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3 {
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+}
+.prose-chat strong {
+  font-weight: 600;
+  color: #fff;
+}
+.prose-chat table {
+  border-collapse: collapse;
+  margin-bottom: 0.6em;
+}
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--line);
+  padding: 0.3em 0.6em;
+}
