@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AssessmentReport from "@/components/AssessmentReport";
 import {
@@ -13,13 +13,26 @@ import {
   clearSession,
   loadSessionBackups,
   deleteSessionBackup,
-  restoreSessionBackup,
+  loadSession,
+  loadQuestion,
+  saveQuestion,
+  restoreSession,
+  pendingChanges,
   DEFAULT_CONFIG,
   type SavedReview,
   type SavedQuestion,
 } from "@/lib/store";
 import { VERDICT_LABELS } from "@/lib/policy";
 import type { InterviewSession, Verdict } from "@/lib/types";
+import {
+  fetchCollection,
+  fetchRecord,
+  getSyncStatus,
+  subscribePulled,
+  subscribeSyncStatus,
+  type SyncStatus,
+} from "@/lib/sync";
+import { unionById, type Collection } from "@/lib/syncModel";
 
 const VERDICT_TONE: Record<string, string> = {
   strong_hire: "var(--ok)",
@@ -40,6 +53,75 @@ function when(at: number): string {
   return sameDay ? `Today ${time}` : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
 }
 
+const byAt = <T extends { at: number }>(xs: T[]) => [...xs].sort((a, b) => b.at - a.at);
+
+/** Unsent local changes for one collection, so a merge neither drops nor resurrects them. */
+function pendingFor(c: Collection) {
+  const mine = pendingChanges().filter((p) => p.collection === c);
+  return {
+    pendingIds: new Set(mine.filter((p) => !p.deleted).map((p) => p.id)),
+    deletedIds: new Set(mine.filter((p) => p.deleted).map((p) => p.id)),
+  };
+}
+
+function SyncLine({ status, serverOk }: { status: SyncStatus; serverOk: boolean | null }) {
+  const host = status.host ?? "the server";
+  if (status.state === "offline" || serverOk === false) {
+    return (
+      <p className="mb-6 rounded-lg border border-[var(--warn)]/40 bg-[var(--warn)]/10 px-3 py-2 text-xs leading-relaxed text-[var(--warn)]">
+        Can&apos;t reach {host}. Everything is still saved in this browser
+        {status.pending ? `, and ${status.pending} change${status.pending === 1 ? "" : "s"} will sync` : " and will sync"} when
+        it is back. This list may be missing interviews saved from other devices.
+      </p>
+    );
+  }
+  const synced =
+    status.state === "syncing"
+      ? "syncing…"
+      : status.lastSyncedAt
+        ? `synced ${new Date(status.lastSyncedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+        : "connecting…";
+  return (
+    <p className="mb-6 text-xs text-[var(--muted)]">
+      Saved on {host}, so it follows you to any browser or device · {synced}
+    </p>
+  );
+}
+
+/**
+ * The full lists live on the server; this browser keeps only the newest few.
+ * Merges the two so the library shows everything, including anything changed
+ * here that has not been sent yet. A null list means the server did not answer
+ * and the local one should stand.
+ */
+async function loadLibrary() {
+  const [r, q, s] = await Promise.all([
+    fetchCollection<SavedReview>("reviews"),
+    fetchCollection<SavedQuestion>("questions"),
+    fetchCollection<InterviewSession>("sessions", 100),
+  ]);
+  let backups: InterviewSession[] | null = null;
+  let remoteOnly = new Set<string>();
+  if (s) {
+    const local = loadSessionBackups();
+    const localIds = new Set(local.map((b) => b.id));
+    // Finished interviews are under Past interviews; only unfinished ones are recoverable.
+    const remote = s.filter((x) => x.question && !x.endedAt && !localIds.has(x.id));
+    const liveId = loadSession()?.id;
+    backups = unionById(remote, local, pendingFor("sessions"))
+      .filter((b) => b.id !== liveId)
+      .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+    remoteOnly = new Set(remote.map((x) => x.id));
+  }
+  return {
+    reviews: r ? byAt(unionById(r, loadReviews(), pendingFor("reviews"))) : null,
+    questions: q ? byAt(unionById(q, loadQuestions(), pendingFor("questions"))) : null,
+    backups,
+    remoteOnly,
+    ok: !!(r && q && s),
+  };
+}
+
 export default function HistoryBrowser() {
   const router = useRouter();
   const [reviews, setReviews] = useState<SavedReview[]>(() => loadReviews());
@@ -48,6 +130,31 @@ export default function HistoryBrowser() {
   // Interviews that were set aside rather than deleted — see clearSession.
   const [backups, setBackups] = useState<InterviewSession[]>(() => loadSessionBackups());
   const [openId, setOpenId] = useState<string | null>(null);
+  // Sessions only the server has: started in another browser, or pushed out of
+  // this one's 4-slot ring. null until the server answers; false if it cannot.
+  const [remoteOnly, setRemoteOnly] = useState<Set<string>>(new Set());
+  const [serverOk, setServerOk] = useState<boolean | null>(null);
+  const [status, setStatusState] = useState<SyncStatus>(() => getSyncStatus());
+  useEffect(() => subscribeSyncStatus(setStatusState), []);
+
+  useEffect(() => {
+    let live = true;
+    const apply = () =>
+      void loadLibrary().then((lib) => {
+        if (!live) return;
+        if (lib.reviews) setReviews(lib.reviews);
+        if (lib.questions) setQuestions(lib.questions);
+        if (lib.backups) setBackups(lib.backups);
+        setRemoteOnly(lib.remoteOnly);
+        setServerOk(lib.ok);
+      });
+    apply();
+    const unsubscribe = subscribePulled(apply);
+    return () => {
+      live = false;
+      unsubscribe();
+    };
+  }, []);
 
   const open = reviews.find((r) => r.id === openId);
 
@@ -64,9 +171,24 @@ export default function HistoryBrowser() {
     ) {
       return;
     }
+    // The interview page reads the question from this browser. One that only
+    // the server had (older than the newest 40) has to be brought here first.
+    if (!loadQuestion(saved.id)) saveQuestion(saved);
     saveConfig({ ...base, source: "saved", savedQuestionId: saved.id });
     clearSession();
     router.push("/interview");
+  };
+
+  /** Prefers the server's copy: it is the full one, where this browser's ring is trimmed. */
+  const restore = async (b: InterviewSession) => {
+    const full = await fetchRecord<InterviewSession>("sessions", b.id);
+    const chosen = full ?? loadSessionBackups().find((x) => x.id === b.id) ?? null;
+    if (!chosen) {
+      alert("That interview could not be loaded. The server is unreachable and this browser has no copy.");
+      return;
+    }
+    if (restoreSession(chosen)) router.push("/interview");
+    else alert("This browser refused to save the interview (storage full?). Nothing was changed.");
   };
 
   if (open) {
@@ -109,6 +231,7 @@ export default function HistoryBrowser() {
         </button>
         <h1 className="text-2xl font-semibold tracking-tight">Your library</h1>
       </div>
+      <SyncLine status={status} serverOk={serverOk} />
 
       <div className="mb-6 flex gap-1 rounded-lg border bg-[var(--panel)] p-1">
         {(
@@ -153,6 +276,7 @@ export default function HistoryBrowser() {
                       <p className="mt-0.5 text-xs text-[var(--muted)]">
                         {when(b.startedAt)} · {Math.round((b.accumulatedMs ?? 0) / 60000)} min ·{" "}
                         {lines} lines of {b.config.language} · {b.messages?.length ?? 0} messages
+                        {remoteOnly.has(b.id) ? ` · from ${status.host ?? "the server"}, not this browser` : ""}
                       </p>
                     </div>
                     <button
@@ -164,7 +288,7 @@ export default function HistoryBrowser() {
                         ) {
                           return;
                         }
-                        if (restoreSessionBackup(b.id)) router.push("/interview");
+                        void restore(b);
                       }}
                       className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[#04121f] hover:brightness-110"
                     >
@@ -174,7 +298,7 @@ export default function HistoryBrowser() {
                       onClick={() => {
                         if (!confirm(`Delete the set-aside interview on "${b.question.title}"?`)) return;
                         deleteSessionBackup(b.id);
-                        setBackups(loadSessionBackups());
+                        setBackups((prev) => prev.filter((x) => x.id !== b.id));
                       }}
                       className="shrink-0 rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--bad)]"
                     >
@@ -226,7 +350,7 @@ export default function HistoryBrowser() {
                     onClick={() => {
                       if (!confirm(`Remove "${q.question.title}" from your library?`)) return;
                       deleteQuestion(q.id);
-                      setQuestions(loadQuestions());
+                      setQuestions((prev) => prev.filter((x) => x.id !== q.id));
                     }}
                     className="shrink-0 rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--bad)]"
                   >
@@ -236,8 +360,11 @@ export default function HistoryBrowser() {
               ))}
             </ul>
             <p className="mt-3 text-xs leading-relaxed text-[var(--muted)]">
-              Kept in this browser, newest {questions.length} of up to 40. Practising one starts a
-              fresh interview with no generation wait — it has already been vetted and executed.
+              {serverOk
+                ? `All ${questions.length} kept on ${status.host ?? "the server"}.`
+                : `Kept in this browser, newest ${questions.length} of up to 40.`}{" "}
+              Practising one starts a fresh interview with no generation wait — it has already been
+              vetted and executed.
             </p>
           </>
         )
@@ -288,10 +415,10 @@ export default function HistoryBrowser() {
                   onClick={() => {
                     if (!confirm(`Delete the saved review for "${r.title}"? The solution file on disk is not touched.`)) return;
                     deleteReview(r.id);
-                    setReviews(loadReviews());
+                    setReviews((prev) => prev.filter((x) => x.id !== r.id));
                   }}
                   className="shrink-0 rounded-lg px-2 py-1 text-xs text-[var(--muted)] hover:text-[var(--bad)]"
-                  title="Remove this review from the browser. Does not delete the file on disk."
+                  title="Remove this review from your library on every device. Does not delete the solution file on disk."
                 >
                   Remove
                 </button>
@@ -303,8 +430,10 @@ export default function HistoryBrowser() {
 
       {tab === "reviews" && reviews.length > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-[var(--muted)]">
-          Kept in this browser, newest {reviews.length} of up to 20. Your solution files on disk are
-          separate and are never removed from here.
+          {serverOk
+            ? `All ${reviews.length} kept on ${status.host ?? "the server"}.`
+            : `Kept in this browser, newest ${reviews.length} of up to 20.`}{" "}
+          Your solution files on disk are separate and are never removed from here.
         </p>
       )}
     </main>

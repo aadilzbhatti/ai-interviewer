@@ -138,10 +138,44 @@ asked for "any valid answer", and to constrain the problem to a single answer ot
 agent rejects a multi-answer question that does neither, and rejects a validator that does not really
 verify.
 
+## Where your data lives
+
+Everything the app keeps is saved twice. The browser's `localStorage` is the first and fast copy,
+and it works offline. The server keeps a second, uncapped copy on disk, one JSON file per record:
+
+```
+~/Documents/Workspace/interview-questions/data/     (or INTERVIEW_DATA_DIR)
+  reviews/<id>.json   questions/<id>.json   sessions/<id>.json   history/<id>.json   config/default.json
+  .trash/<collection>/<id>.<time>.json      the last real version of anything you deleted
+```
+
+That copy is what makes history follow you. Open the app in another browser or on your phone and
+the library fills in from the server. An interview started elsewhere shows up under
+**Library → Recoverable**, and restoring it continues from the full server copy. The browser keeps
+only the newest 20 reviews and 40 questions, but the library lists everything the server holds.
+
+The rules, enforced in `src/lib/syncModel.ts` and tested by `npm run validate:storage`:
+
+- **Last write wins**, by the time the change was made. An edit made while offline goes up when the
+  server is reachable again, and loses only to something newer.
+- **Nothing is lost offline.** Unsent changes wait in an outbox in `localStorage`. That includes
+  anything the local caps pushed out of the browser before it was sent.
+- **A delete is a tombstone plus a copy in `.trash`.** It removes the record on every device, but
+  never destroys the last real version.
+- **A browser's first sync uploads what it already had**, stamped with when each record was made,
+  so an old tab cannot overwrite newer work from another device.
+
+There are no accounts. Anyone who can reach the server can read and change the library, so keep it
+on a private network such as a tailnet.
+
+To fold a dev server's data into a deployed instance, set `STORAGE_UPSTREAM` to that instance's
+origin before starting the dev server. The dev server then stores nothing itself and forwards
+every storage call. Opening it in a browser that holds older data uploads that data on first load.
+
 ## Verification
 
 ```bash
-npm run validate             # all six of the below
+npm run validate             # every suite, including the ones below
 npm run validate:bank        # every reference solution, in Python and JS, against its own tests
 npm run validate:workers     # the actual worker files: happy path, syntax errors, missing functions,
                              # thrown exceptions, input mutation, stdout capture, tuple/array equality
@@ -154,6 +188,8 @@ npm run validate:solutions   # saved-file rendering (including a prompt full of 
                              # against traversal, and the save route against a real temp directory
 npm run validate:progress    # the generation progress model: monotonicity across a revision, no
                              # long stalls, no early completion, and the checklist states
+npm run validate:storage     # server storage: last-write-wins, tombstones and .trash, offline
+                             # outbox, cap eviction, concurrent writes, two browsers via the route
 ```
 
 `validate:bank` executes all 21 questions in both languages — 42 runs, ~180 test cases — and also
@@ -178,6 +214,10 @@ src/app/api/assess/           end-of-interview debrief, scored against the deriv
 src/app/api/questions/generate/  generator + vetting agent, with one repair round
 src/app/api/solutions/save/   writes a solution under SOLUTIONS_DIR
 src/app/api/debug/log/        availability probe and a sink for client-side debug events
+src/app/api/storage/          the server's copy of the library (see "Where your data lives")
+src/lib/syncModel.ts          storage merge rules — pure
+src/lib/storageDisk.ts        one JSON file per record, atomic writes, .trash on delete
+src/lib/sync.ts               browser side: outbox push, change-feed pull, offline retry
 public/workers/               the sandboxes and the shared comparison logic
 scripts/                      validation
 ```
@@ -185,7 +225,9 @@ scripts/                      validation
 ## Known limits
 
 - Python and JavaScript only; no third-party packages inside candidate solutions.
-- Sessions are kept in `localStorage` — single browser, single user, no accounts. An in-progress
-  interview resumes if you navigate away and come back, and comes back paused.
+- Single user, no accounts. The library is saved in the browser and on the server, so it follows
+  you between devices. An in-progress interview resumes if you navigate away and come back, and
+  comes back paused.
+- Two devices editing the same interview at the same moment is last-write-wins, not a merge.
 - The hint budget is enforced by the prompt, not by code.
 - Voice is not implemented; the interviewer is text-only for now.

@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "validate:bank": "tsx scripts/validate-bank.ts",
     "validate:workers": "tsx scripts/validate-workers.ts",
-    "validate": "npm run validate:bank && npm run validate:workers && npm run validate:calibration && npm run validate:timer && npm run validate:solutions && npm run validate:progress && npm run validate:crash && npm run validate:cancel && npm run validate:verdict && npm run validate:recovery",
+    "validate": "npm run validate:bank && npm run validate:workers && npm run validate:calibration && npm run validate:timer && npm run validate:solutions && npm run validate:progress && npm run validate:crash && npm run validate:cancel && npm run validate:verdict && npm run validate:recovery && npm run validate:storage",
     "validate:calibration": "tsx scripts/validate-calibration.ts",
     "validate:timer": "tsx scripts/validate-timer.ts",
     "dev:debug": "INTERVIEW_DEBUG_LOG=1 next dev -p 3100",
@@ -19,7 +19,8 @@
     "validate:crash": "tsx scripts/validate-crashwatch.ts",
     "validate:cancel": "tsx scripts/validate-cancel.ts",
     "validate:verdict": "tsx scripts/validate-verdict.ts",
-    "validate:recovery": "tsx scripts/validate-recovery.ts"
+    "validate:recovery": "tsx scripts/validate-recovery.ts",
+    "validate:storage": "tsx scripts/validate-storage.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

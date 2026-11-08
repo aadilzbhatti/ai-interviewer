@@ -21,6 +21,7 @@ import {
   loadHistory,
   type HistoryEntry,
 } from "@/lib/store";
+import { subscribePulled } from "@/lib/sync";
 import {
   getJob,
   subscribeJob,
@@ -64,7 +65,9 @@ const BAND_COPY: Record<string, string> = {
 export default function SetupForm() {
   const router = useRouter();
   const [config, setConfig] = useState<InterviewConfig>(() => loadConfig() || DEFAULT_CONFIG);
-  const [history] = useState<HistoryEntry[]>(() => loadHistory());
+  const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
+  // A new browser starts empty and fills in from the server a moment later.
+  useEffect(() => subscribePulled(() => setHistory(loadHistory())), []);
   // A build started here and left to run keeps going at module scope; this just
   // mirrors it so the home page can say so and offer the result.
   const [job, setJob] = useState<GenerationJob | null>(() => getJob());

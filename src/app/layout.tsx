@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SyncAgent from "@/components/SyncAgent";
 
 export const metadata: Metadata = {
   title: "Mock Interviewer",
@@ -11,7 +12,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SyncAgent />
+        {children}
+      </body>
     </html>
   );
 }
