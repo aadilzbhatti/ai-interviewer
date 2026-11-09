@@ -81,8 +81,8 @@ const list = (keys: CriterionKey[]) => {
 /**
  * The best verdict a set of scores can support.
  *
- * A 2 is defined on the scale as "needed the interviewer to supply what this
- * level is expected to supply themselves", which is not meeting the bar. One
+ * A 2 is defined on the scale as falling short of what this level is expected
+ * to supply themselves, alone or with help they asked for. One
  * of those caps at leaning_no_hire; two, or any 1, caps at no_hire.
  *
  * A criterion marked `voided` is skipped entirely. That is the other half of

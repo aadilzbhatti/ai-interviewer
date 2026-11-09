@@ -202,9 +202,10 @@ ${bar.verdictAnchors.join("\n")}
 The verdict is not a separate impression. It FOLLOWS from the scores and from the
 level this performance actually maps to, and these rules are hard limits:
 
-- A criterion scored 2 means the candidate needed the interviewer to supply
-  something a ${level.label} is expected to supply themselves. That is, by
-  definition, not meeting the bar. **One criterion at 2 caps the verdict at
+- A criterion scored 2 means the candidate fell short of what a ${level.label}
+  is expected to supply themselves, on their own or with help they asked for.
+  That is, by definition, not meeting the bar. Help nobody asked for is never
+  the reason for a 2. **One criterion at 2 caps the verdict at
   "leaning_no_hire".** Two or more at 2, or any criterion at 1, caps it at
   "no_hire".
 - **If your own levelReadout places the unaided performance below

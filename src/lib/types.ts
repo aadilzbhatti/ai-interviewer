@@ -261,6 +261,12 @@ export interface Assessment {
   struckHelp?: ChargedHelp[];
   /** Added by the app, not the grader: what happened with the clock. */
   timing?: TimingRecord;
+  /**
+   * Added by the app: statements holding unrequested help against the
+   * candidate. firstDraft is what got the review sent back; remaining is what
+   * survived the rewrite, shown as a warning.
+   */
+  helpRuleCheck?: { firstDraft: string[]; remaining: string[] };
 }
 
 export interface ChargedHelp {

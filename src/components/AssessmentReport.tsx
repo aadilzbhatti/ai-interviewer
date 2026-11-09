@@ -138,6 +138,33 @@ export default function AssessmentReport({
             </p>
           </div>
         )}
+        {assessment.helpRuleCheck && assessment.helpRuleCheck.remaining.length > 0 && (
+          <div className="mt-4 rounded-xl border border-[var(--warn)]/40 bg-[var(--warn)]/5 p-3.5">
+            <div className="text-xs font-medium tracking-wider text-[var(--warn)] uppercase">
+              This review still counts help you did not ask for
+            </div>
+            <ul className="mt-1.5 space-y-1 text-sm leading-relaxed">
+              {assessment.helpRuleCheck.remaining.map((s, i) => (
+                <li key={i}>&ldquo;{s}&rdquo;</li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
+              The grader was sent back once to remove this and did not. Help nobody asked for is not
+              supposed to lower a score, appear as a gap, or move the verdict. Discount these lines and
+              whatever they drove.
+            </p>
+          </div>
+        )}
+        {assessment.helpRuleCheck &&
+          assessment.helpRuleCheck.firstDraft.length > 0 &&
+          assessment.helpRuleCheck.remaining.length === 0 && (
+            <p className="mt-4 text-xs leading-relaxed text-[var(--muted)]">
+              The first draft of this review held help you did not ask for against you (
+              {assessment.helpRuleCheck.firstDraft.length} statement
+              {assessment.helpRuleCheck.firstDraft.length === 1 ? "" : "s"}). It was sent back and
+              rewritten without it.
+            </p>
+          )}
         {assessment.timing && (
           <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
             <span className="mr-1.5 text-[11px] font-medium uppercase tracking-wider">Time</span>

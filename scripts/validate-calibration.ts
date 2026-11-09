@@ -702,6 +702,9 @@ for (const help of Object.keys(HELP_LEVELS) as HelpLevel[]) {
   check("consent: the grader is told the app labelled every turn", /the app has labelled every turn/.test(balancedGrade) && /UNPROMPTED/.test(balancedGrade));
   check("consent: a clarifying question is not a request for help", /clarifying question about the problem has not asked for help/.test(balancedGrade));
   check("consent: \"interviewer assistance\" may not be held against them", /do NOT describe "interviewer assistance"/.test(balancedGrade));
+  check("consent: a 2 never comes from help nobody asked for", /Help nobody asked for never makes a 2/.test(balancedGrade) && /Help nobody asked for is never\s+the reason for a 2/.test(balancedGrade));
+  check("consent: the old wording that ignored who asked is gone", !/2 — Below the bar: needed the interviewer to supply/.test(balancedGrade));
+  check("consent: the grader gets the worked example of a volunteered fix", /Worked example, because this exact case has been graded wrongly before/.test(balancedGrade));
   check("consent: every charge must be listed and is checked", /List in chargedHelp every piece of help/.test(balancedGrade) && /"chargedHelp"/.test(balancedGrade));
 }
 

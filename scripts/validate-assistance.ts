@@ -15,7 +15,10 @@ import {
   checkChargedHelp,
   speakerTag,
   HINT_BUTTON_TEXT,
+  findUnpromptedCharges,
+  correctionMessage,
 } from "../src/lib/assistance";
+import { applyGradingEvent, gradingStageStatuses, initialGrading } from "../src/lib/gradingProgress";
 import type { ChatMessage } from "../src/lib/types";
 
 let failures = 0;
@@ -134,6 +137,59 @@ const msg = (role: "user" | "assistant", content: string, min: number, extra: Pa
 
   const late = checkChargedHelp([{ atMin: 30, what: "x", request: "Hint button" }], transcript, startedAt);
   check("charges: a request long before the help does not cover it", late.struck.length === 1);
+}
+
+// --- reading what the grader wrote ------------------------------------------
+// The first live test: the grader listed only the requested hint as charged,
+// then held a volunteered tip against the candidate anyway. These are its words.
+{
+  const real = {
+    headline: "Reached a correct greedy solution only after the interviewer supplied the sorting insight.",
+    helpAdjustment:
+      "The interviewer supplied the sorting insight unprompted at t+12m, after the candidate had confidently proposed and coded an incorrect approach. This was the core idea of the problem, and the candidate did not derive it. I held this against them in problemSolving (score: 2). The candidate did request one hint at t+25m about the zero-capacity case, which I charged to them. The unprompted help on sorting is what moves the verdict from 'hire' (if they had reached the solution independently) to 'leaning_no_hire' — a Mid level engineer should not need the central greedy insight supplied on an easy question.",
+    gaps: [
+      "Did not recognize that sorting is required to maximize the count of boxes — the core greedy insight on an easy problem",
+      "Proposed and confidently coded a fundamentally incorrect approach (unsorted greedy scan) without recognizing the flaw",
+      "Required the interviewer to supply the central idea unprompted, which is below the bar for Mid level on an easy question",
+    ],
+    debrief:
+      'At t+12m the interviewer supplied the core insight unprompted: "If you put the lightest boxes on first you\'ll fit more, so sort ascending before the loop." The candidate had not asked for this. After sorting was added, the candidate found and fixed an off-by-one error relating to zero capacity at t+28m, following a hint they did request at t+25m.',
+  };
+  const found = findUnpromptedCharges(real);
+  check("review: the gap blaming unprompted help is caught", found.some((f) => f.startsWith("Required the interviewer to supply the central idea unprompted")));
+  check("review: \"moves the verdict\" on unprompted help is caught", found.some((f) => f.includes("is what moves the verdict")));
+  check("review: a gap about their own flawed idea is not flagged", !found.some((f) => f.startsWith("Proposed and confidently coded")));
+  check("review: merely reporting that help was unprompted is not flagged", !found.some((f) => f.startsWith("At t+12m the interviewer supplied")));
+  check("review: charging the requested hint is not flagged", !found.some((f) => f.includes("which I charged to them")));
+
+  const clean = findUnpromptedCharges({
+    helpAdjustment:
+      "The interviewer volunteered the sorting idea unprompted at t+12m. Per the rules this was not held against the candidate, and problem solving is voided from that point.",
+    gaps: ["Did not test the empty list before running the suite"],
+    debrief:
+      "The unprompted tip did not affect any score. The volunteered sorting idea was not held against the candidate and did not move the verdict. The candidate needed one requested hint, on zero capacity.",
+    scores: { problemSolving: { commentary: "Voided: the interviewer volunteered the key idea before they could react to the failing run." } },
+  });
+  check("review: a review that follows the rule is left alone", clean.length === 0, JSON.stringify(clean));
+
+  const inScores = findUnpromptedCharges({
+    scores: { problemSolving: { commentary: "Scored 2 because they relied on the unsolicited hint at t+12m." } },
+  });
+  check("review: score commentary is read too", inScores.length === 1);
+
+  const msg = correctionMessage(found);
+  check("correction: quotes every offending statement", found.every((f) => msg.includes(f)));
+  check("correction: asks for the complete JSON again", /complete corrected JSON object/.test(msg));
+  check("correction: forbids raising scores for any other reason", /Do not raise a score for any other reason/.test(msg));
+
+  // The progress bar: a recheck is visible when it happens, invisible otherwise.
+  const ordinary = gradingStageStatuses(applyGradingEvent(initialGrading(0), { type: "phase", stage: "coaching" }, 1));
+  check("progress: an ordinary grade does not show a recheck step", !ordinary.some((s) => s.key === "recheck"));
+  const rechecking = gradingStageStatuses(
+    applyGradingEvent(applyGradingEvent(initialGrading(0), { type: "phase", stage: "coaching" }, 1), { type: "phase", stage: "recheck" }, 2),
+  );
+  check("progress: a recheck shows as the active last step", rechecking[rechecking.length - 1].key === "recheck" && rechecking[rechecking.length - 1].status === "active");
+  check("progress: with every ordinary step done", rechecking.slice(0, -1).every((s) => s.status === "done"));
 }
 
 console.log(`\n${failures} problem(s).`);

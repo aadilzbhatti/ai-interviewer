@@ -2,7 +2,7 @@ import { anthropic, MODEL, tryExtractJson } from "@/lib/anthropic";
 import { assessmentSystemPrompt } from "@/lib/prompts";
 import { reconcileAssessment } from "@/lib/verdict";
 import { JOB_LEVELS, HELP_LEVELS, helpPolicy, timingRecord, isStrictTime } from "@/lib/policy";
-import { checkChargedHelp, labelMessages, speakerTag } from "@/lib/assistance";
+import { checkChargedHelp, correctionMessage, findUnpromptedCharges, labelMessages, speakerTag } from "@/lib/assistance";
 import { stagesFromText } from "@/lib/gradingProgress";
 import { logDebug } from "@/lib/debugLog";
 import { guardStream, ndjsonSender } from "@/lib/streamSafe";
@@ -167,12 +167,82 @@ ${transcript || "(no conversation)"}`;
 }
 
 type Emit = (event: Record<string, unknown>) => void;
+type Turn = { role: "user" | "assistant"; content: string };
 
 /**
- * Streams the grade so the wait is legible. Each stage announced corresponds to
- * a field the grader has genuinely finished writing — the alternative, a bar
- * driven by a timer through a 75-second silence, is the thing that makes a
- * working app look like a hung one.
+ * One grading call, streamed. When `announce` is set, each stage announced
+ * corresponds to a field the grader has genuinely finished writing — the
+ * alternative, a bar driven by a timer through a 75-second silence, is the
+ * thing that makes a working app look like a hung one.
+ */
+async function gradeOnce(
+  system: string,
+  messages: Turn[],
+  send: Emit,
+  announce: boolean,
+  phase: string,
+): Promise<{ text: string; assessment?: Assessment; error?: string }> {
+  const startedAt = Date.now();
+  let text = "";
+  let announced = 0;
+  let stopReason: string | null = null;
+  let usage: unknown;
+  try {
+    const stream = await anthropic().messages.create({
+      model: MODEL,
+      max_tokens: 6000,
+      system,
+      messages,
+      stream: true,
+    });
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        text += event.delta.text;
+        if (announce) {
+          for (const stage of stagesFromText(text, announced)) {
+            send({ type: "phase", stage });
+            announced++;
+          }
+        }
+      } else if (event.type === "message_delta") {
+        stopReason = event.delta.stop_reason ?? stopReason;
+        usage = event.usage;
+      }
+    }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    await logDebug({ route: "assess", phase: `${phase}:error`, error, responseText: text, durationMs: Date.now() - startedAt });
+    return { text, error };
+  }
+
+  const extracted = tryExtractJson<Assessment>(text);
+  const assessment = extracted.ok ? extracted.value : undefined;
+  const error = extracted.ok
+    ? undefined
+    : extracted.truncated
+      ? `The debrief was cut off before it finished (${extracted.error}). Try grading again.`
+      : extracted.error;
+  await logDebug({
+    route: "assess",
+    phase,
+    model: MODEL,
+    system,
+    messages,
+    responseText: text,
+    parsed: assessment,
+    error,
+    usage,
+    durationMs: Date.now() - startedAt,
+    data: { stopReason, stagesAnnounced: announced },
+  });
+  return { text, assessment, error };
+}
+
+/**
+ * Grades, checks the result against the unrequested-help rule, and sends a
+ * draft that breaks it back once with the offending statements quoted. A
+ * second draft that still breaks it is kept, and the statements are shown to
+ * the candidate as a warning rather than silently passed through.
  */
 async function runAssessment(
   system: string,
@@ -180,70 +250,36 @@ async function runAssessment(
   send: Emit,
   addFacts: (a: Assessment) => Assessment,
 ): Promise<void> {
-  const gradingStartedAt = Date.now();
   send({ type: "phase", stage: "read" });
-
-  let text = "";
-  let announced = 0;
-  let stopReason: string | null = null;
-  let usage: unknown;
-
-  try {
-    const stream = await anthropic().messages.create({
-      model: MODEL,
-      max_tokens: 6000,
-      system,
-      messages: [{ role: "user", content: userContent }],
-      stream: true,
-    });
-
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        text += event.delta.text;
-        for (const stage of stagesFromText(text, announced)) {
-          send({ type: "phase", stage });
-          announced++;
-        }
-      } else if (event.type === "message_delta") {
-        stopReason = event.delta.stop_reason ?? stopReason;
-        usage = event.usage;
-      }
-    }
-
-    const extracted = tryExtractJson<Assessment>(text);
-    const assessment = extracted.ok ? extracted.value : undefined;
-    const parseError = extracted.ok
-      ? undefined
-      : extracted.truncated
-        ? `The debrief was cut off before it finished (${extracted.error}). Try grading again.`
-        : extracted.error;
-    await logDebug({
-      route: "assess",
-      phase: "assess",
-      model: MODEL,
-      system,
-      messages: [{ role: "user", content: userContent }],
-      responseText: text,
-      parsed: assessment,
-      error: parseError,
-      usage,
-      durationMs: Date.now() - gradingStartedAt,
-      data: { stopReason, stagesAnnounced: announced },
-    });
-    if (!assessment) throw new Error(parseError || "The grader returned no usable JSON.");
-    // The scores-to-verdict rules are stated in the prompt, but a prompt is a
-    // request. This is where they are actually applied.
-    const reconciled = addFacts(reconcileAssessment(assessment));
-    send({ type: "result", assessment: reconciled });
-  } catch (e) {
-    await logDebug({
-      route: "assess",
-      phase: "assess:error",
-      error: e instanceof Error ? e.message : String(e),
-      responseText: text,
-      durationMs: Date.now() - gradingStartedAt,
-      data: { stagesAnnounced: announced },
-    });
-    send({ type: "error", message: e instanceof Error ? e.message : String(e) });
+  const asked: Turn[] = [{ role: "user", content: userContent }];
+  const first = await gradeOnce(system, asked, send, true, "assess");
+  if (!first.assessment) {
+    send({ type: "error", message: first.error || "The grader returned no usable JSON." });
+    return;
   }
+
+  let final = first.assessment;
+  let helpRuleCheck: Assessment["helpRuleCheck"];
+  const firstDraft = findUnpromptedCharges(first.assessment);
+  if (firstDraft.length) {
+    send({ type: "phase", stage: "recheck" });
+    const second = await gradeOnce(
+      system,
+      [...asked, { role: "assistant", content: first.text }, { role: "user", content: correctionMessage(firstDraft) }],
+      send,
+      false,
+      "assess:recheck",
+    );
+    // If the rewrite fails outright, the first draft stands and every statement stays flagged.
+    if (second.assessment) final = second.assessment;
+    helpRuleCheck = {
+      firstDraft,
+      remaining: second.assessment ? findUnpromptedCharges(second.assessment) : firstDraft,
+    };
+  }
+
+  // The scores-to-verdict rules are stated in the prompt, but a prompt is a
+  // request. This is where they are actually applied.
+  const reconciled = addFacts(reconcileAssessment(final));
+  send({ type: "result", assessment: helpRuleCheck ? { ...reconciled, helpRuleCheck } : reconciled });
 }

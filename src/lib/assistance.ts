@@ -142,3 +142,75 @@ export function checkChargedHelp(
   }
   return { kept, struck };
 }
+
+// ---- holding unrequested help against them -----------------------------------
+//
+// Listing charges was not enough. In the first live test the grader listed only
+// the hint the candidate asked for, then wrote "I held this against them in
+// problemSolving" about a tip the interviewer volunteered, put "required the
+// interviewer to supply the central idea unprompted" in the gaps, and said that
+// help "moves the verdict". The prompt said not to, three ways. A prompt is a
+// request, so the app reads what the grader wrote and sends it back when it
+// finds this.
+
+const UNASKED =
+  /\b(unprompted|unasked|unsolicited|unrequested|unbidden|volunteer(?:ed|ing|s)?|without (?:being )?(?:asked|asking|a request)|(?:had|did) not ask(?:ed)? for|nobody asked|no one asked|not requested)\b/i;
+
+const HELD_AGAINST =
+  /\b(held (?:this |it |that )?against|counts? against|counted against|charg(?:e|ed|ing)|penali[sz](?:e|ed|ing)|lower(?:s|ed)? (?:the |their |his |her )?(?:score|verdict)|moves? the verdict|drove the verdict|cost (?:them|the candidate)|below the bar|required (?:the interviewer|help|guidance)|needed (?:the interviewer|help|guidance)|reli(?:ed|ance) on|dependen(?:t|ce) on)\b/i;
+
+const NOT_HELD =
+  /\b(not|never|no|n't|without)\b[^.;]{0,30}\b(held|count|charg|penali|lower|against|cost|affect|move|weigh)/i;
+
+const sentences = (text: string) =>
+  text
+    .split(/(?<=[.!?])\s+(?=[A-Z"'(])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * Statements in a review that hold help nobody asked for against the candidate.
+ *
+ * A gap that mentions unrequested help is one by definition: listing it as a
+ * gap is holding it against them. Elsewhere, a sentence has to both mention
+ * unrequested help and charge it, and not be saying the opposite ("this was
+ * not held against them").
+ */
+export function findUnpromptedCharges(a: {
+  gaps?: string[];
+  helpAdjustment?: string;
+  levelReadout?: string;
+  headline?: string;
+  debrief?: string;
+  scores?: Record<string, { commentary?: string } | undefined>;
+}): string[] {
+  const found: string[] = [];
+  for (const g of Array.isArray(a.gaps) ? a.gaps : []) {
+    if (typeof g === "string" && UNASKED.test(g) && !NOT_HELD.test(g)) found.push(g);
+  }
+  const prose = [
+    a.headline,
+    a.helpAdjustment,
+    a.levelReadout,
+    a.debrief,
+    ...Object.values(a.scores ?? {}).map((s) => s?.commentary),
+  ];
+  for (const text of prose) {
+    if (typeof text !== "string") continue;
+    for (const s of sentences(text)) {
+      if (UNASKED.test(s) && HELD_AGAINST.test(s) && !NOT_HELD.test(s)) found.push(s);
+    }
+  }
+  return [...new Set(found)];
+}
+
+/** What the grader is told when its review breaks the rule. */
+export function correctionMessage(statements: string[]): string {
+  return `The app checked your review against the rule on help nobody asked for, and these statements break it:
+
+${statements.map((s) => `- "${s}"`).join("\n")}
+
+Help in a turn the transcript labels UNPROMPTED, or "replying to the candidate; not a request for help", may not lower any score, may not appear as a gap, and may not move the verdict, in any band. What a candidate demonstrated before that help is still evidence. What came after it is not evidence either way. If that leaves a criterion unjudgeable, mark it "voided": true, score it 3, and say so in the commentary. If the outcome turns on it, the verdict is "neutral".
+
+Return the complete corrected JSON object, in the same format, with every field. Change only what the rule requires. Do not raise a score for any other reason, and do not mention this correction in the review.`;
+}

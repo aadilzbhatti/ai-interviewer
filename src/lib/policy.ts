@@ -250,7 +250,7 @@ export function gradingBar(config: InterviewConfig): GradingBar {
       ? `This question is EASIER than the usual bar for ${level.label}. Reaching a correct solution is therefore table stakes and earns a 3 at most. The signal here is in speed, cleanliness, edge cases they anticipated without being asked, and the quality of the complexity discussion. Be harder to impress than you would be on a ${level.difficultyBias} question, and do not award a 4 or 5 for merely finishing.`
       : stretch > 0
         ? `This question is HARDER than the usual bar for ${level.label}. A partial solution with sound reasoning can still sit at or above the bar, and failing to finish is not by itself below the bar. Do not inflate for effort either — judge the quality of the reasoning, not the amount of it. Say explicitly in the debrief that the question was above level.`
-        : `This question sits at the usual bar for ${level.label}. Expect a near-optimal solution reached substantially unaided, with edge cases handled and complexity stated correctly.`;
+        : `This question sits at the usual bar for ${level.label}. Expect a near-optimal solution reached without asking for substantial help, with edge cases handled and complexity stated correctly.`;
 
   const helpNote = `The interviewer was operating in the "${policy.band}" band (help score ${policy.score}/100). ${
     policy.band === "coaching"
@@ -265,6 +265,7 @@ Before you hold any help against the candidate, establish WHO ASKED. You do not 
 Help nobody asked for is the interview's error, not the candidate's, in every band. Do NOT lower any score for it, do NOT list it as a gap, do NOT describe "interviewer assistance" or "needing guidance" as something the candidate needed, and do NOT let it move the verdict. It is not a concession and carries none of the weight of one.
 - What to do instead: that criterion loses its evidence from the moment of the help. Score what the candidate demonstrated BEFORE it and say in helpAdjustment that it was volunteered unprompted. If too little was demonstrated beforehand to judge a criterion at all, say that plainly in the commentary and score it 3 as a non-judgement rather than inventing a number — a 3 recorded for this reason is explicitly NOT a below-the-bar signal and must not be read as one.
 - If a criterion is unjudgeable for that reason and it mattered to the outcome, the honest verdict is "neutral", with the reason named: the interview did not produce the signal. Never convert missing signal into a penalty.
+- Worked example, because this exact case has been graded wrongly before: the candidate proposes a flawed approach, their first test run fails, and a minute later the interviewer volunteers the fix, unprompted. The flawed first idea is real evidence, but they never got the chance to find the fix themselves. So problem solving is unjudgeable from that moment: mark it "voided", say why, and do not write "needed the interviewer to supply the idea" anywhere — not as a gap, not in helpAdjustment, not as a reason for the verdict. If the outcome turns on it, the verdict is "neutral".
 
 List in chargedHelp every piece of help you DID hold against the candidate, with the minute it was given and the request it answered (their words, or "Hint button"). The app checks each one against the labelled requests in the transcript. A charge with no request behind it is struck and shown to the candidate as an error in this review — so do not charge what they did not ask for, and do not hold help against them anywhere without listing it here.`;
 
@@ -274,7 +275,7 @@ List in chargedHelp every piece of help you DID hold against the candidate, with
     helpNote,
     scaleAnchors: [
       "1 — Did not demonstrate this at all, or demonstrated its opposite.",
-      `2 — Below the bar: needed the interviewer to supply what a ${level.label} is expected to supply themselves.`,
+      `2 — Below the bar: fell short of what a ${level.label} is expected to supply themselves, on their own or with help they ASKED for. Help nobody asked for never makes a 2.`,
       `3 — At the bar: exactly what a committee expects from a ${level.label} here. This is the default score, not a criticism.`,
       "4 — Above the bar: would be noted approvingly in a debrief.",
       "5 — Well above the bar: the thing you would quote to the committee. Rare; reserve it.",

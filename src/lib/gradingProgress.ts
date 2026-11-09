@@ -21,7 +21,9 @@ export type GradeStage =
   | "scores"
   | "review"
   | "timeline"
-  | "coaching";
+  | "coaching"
+  /** Only when the first draft held unrequested help against them and was sent back. */
+  | "recheck";
 
 export const GRADE_STAGES: GradeStage[] = [
   "read",
@@ -41,6 +43,7 @@ export const GRADE_LABELS: Record<GradeStage, string> = {
   review: "Reviewing your code as a pull request",
   timeline: "Rebuilding the interview minute by minute",
   coaching: "Pulling out strengths, gaps and what to practise",
+  recheck: "Sending back a draft that held unasked help against you",
 };
 
 export const GRADE_BLURBS: Record<GradeStage, string> = {
@@ -52,6 +55,7 @@ export const GRADE_BLURBS: Record<GradeStage, string> = {
   review: "Correctness beyond the tests, real complexity, readability, and the edge cases.",
   timeline: "Each meaningful moment and what it signalled.",
   coaching: "The part addressed to you rather than to the committee.",
+  recheck: "The first draft counted help you never asked for. It is being rewritten without it, which takes about another minute.",
 };
 
 /** Paces the creep between real events. Measured against a 75s reference run. */
@@ -63,6 +67,7 @@ const EXPECTED_MS: Record<GradeStage, number> = {
   review: 12_000,
   timeline: 10_000,
   coaching: 8_000,
+  recheck: 60_000,
 };
 
 /** Bands sized by how much text each field carries, not by clock time. */
@@ -74,6 +79,7 @@ const WINDOWS: Record<GradeStage, [number, number]> = {
   review: [0.7, 0.82],
   timeline: [0.82, 0.92],
   coaching: [0.92, 0.97],
+  recheck: [0.9, 0.97],
 };
 
 const CEILING = 0.97;
@@ -159,12 +165,14 @@ export type GradeStageStatus = "done" | "active" | "pending";
 export function gradingStageStatuses(
   state: GradingState,
 ): { key: GradeStage; label: string; blurb: string; status: GradeStageStatus }[] {
+  // The recheck is not an ordinary step: it appears only once it has happened.
+  const stages: GradeStage[] = state.reached.includes("recheck") ? [...GRADE_STAGES, "recheck"] : GRADE_STAGES;
   const current = state.stage
-    ? GRADE_STAGES.indexOf(state.stage)
+    ? stages.indexOf(state.stage)
     : state.done
-      ? GRADE_STAGES.length
+      ? stages.length
       : -1;
-  return GRADE_STAGES.map((key, i) => ({
+  return stages.map((key, i) => ({
     key,
     label: GRADE_LABELS[key],
     blurb: GRADE_BLURBS[key],
