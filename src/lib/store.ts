@@ -20,6 +20,7 @@ export const DEFAULT_CONFIG: InterviewConfig = {
   language: "python",
   durationMin: 35,
   clockMode: "pausable",
+  strictTime: true,
   source: "bank",
   seedDescription: "",
 };
@@ -60,6 +61,8 @@ export function normalizeConfig(raw: Record<string, unknown>): InterviewConfig {
   if (!raw.source) merged.source = merged.generateFresh ? "generated" : "bank";
   if (typeof merged.seedDescription !== "string") merged.seedDescription = "";
   if (merged.clockMode !== "strict") merged.clockMode = "pausable";
+  // Configs from before the time-limit setting existed: the limit counted.
+  if (typeof merged.strictTime !== "boolean") merged.strictTime = true;
   delete merged.generateFresh;
   return merged;
 }

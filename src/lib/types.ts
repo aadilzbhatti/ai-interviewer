@@ -146,6 +146,12 @@ export interface InterviewConfig {
   language: Language;
   durationMin: number;
   clockMode: ClockMode;
+  /**
+   * Whether the time limit counts. Strict: the review judges where you stood
+   * when the planned time ran out. Off: the limit is only a pacing guide. Taking
+   * extra time (+5) turns it off for the rest of the interview, without penalty.
+   */
+  strictTime: boolean;
   source: QuestionSource;
   /** Free text the candidate wrote when source is "described". */
   seedDescription: string;
@@ -163,6 +169,8 @@ export interface ChatMessage {
   at: number;
   /** Elapsed interview time, which excludes anything spent paused. */
   elapsedMs?: number;
+  /** Sent by the Hint button: the one request for help that is beyond doubt. */
+  hintRequest?: boolean;
 }
 
 /** Eight-point hiring scale, strongest first. */
@@ -241,6 +249,40 @@ export interface Assessment {
    * itself.
    */
   verdictAdjustment?: { from: string; to: Verdict; reason: string };
+  /**
+   * Every piece of help the grader held against the candidate, with the moment
+   * they asked for it. Help with no request behind it may not be charged.
+   */
+  chargedHelp?: ChargedHelp[];
+  /**
+   * Added by the app, not the grader: charges that no request in the
+   * transcript supports. Shown to the candidate as struck.
+   */
+  struckHelp?: ChargedHelp[];
+  /** Added by the app, not the grader: what happened with the clock. */
+  timing?: TimingRecord;
+}
+
+export interface ChargedHelp {
+  /** Interview minute the help was given. */
+  atMin: number;
+  /** What the interviewer supplied. */
+  what: string;
+  /** The candidate's own words asking for it, or "Hint button". */
+  request: string;
+}
+
+export interface TimingRecord {
+  /** Whether strict time was on when the interview started. */
+  strictAtStart: boolean;
+  /** Whether it was still on at the end. */
+  strictAtEnd: boolean;
+  /** Minute strict time was turned off by asking for more, if it was. */
+  relaxedAtMin?: number;
+  extensions: number;
+  plannedMin: number;
+  finalBudgetMin: number;
+  usedMin: number;
 }
 
 export interface VetVerdict {

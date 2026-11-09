@@ -26,6 +26,9 @@ import {
   VERDICTS,
   EXTENSION_MIN,
   MAX_EXTENSIONS,
+  timingRecord,
+  timeNote,
+  isStrictTime,
 } from "../src/lib/policy";
 import type { Concession, Difficulty, HelpLevel, InterviewConfig, JobLevel } from "../src/lib/types";
 
@@ -518,14 +521,19 @@ for (const help of Object.keys(HELP_LEVELS) as HelpLevel[]) {
 }
 
 // --- extra time -------------------------------------------------------------
+// The complaint this encodes: asking for five more minutes was filed as a
+// concession and the review judged the work against the original limit. Now
+// +5 turns strict time off for the rest of the interview, the report says so,
+// and the extra time is never weighed against the candidate.
 {
-  const base: InterviewConfig = { ...DEFAULT_CONFIG, durationMin: 35 };
+  const base: InterviewConfig = { ...DEFAULT_CONFIG, durationMin: 35, strictTime: true };
   const extended = applyConcession(base, "extend_time");
   check(
     `time: an extension adds ${EXTENSION_MIN} minutes`,
     extended.durationMin === base.durationMin + EXTENSION_MIN,
     String(extended.durationMin),
   );
+  check("time: and turns strict time off", extended.strictTime === false);
   check(
     "time: and nothing else about the interview moves",
     extended.jobLevel === base.jobLevel &&
@@ -534,37 +542,55 @@ for (const help of Object.keys(HELP_LEVELS) as HelpLevel[]) {
   );
   const twice = applyConcession(extended, "extend_time");
   check("time: extensions stack", twice.durationMin === 35 + 2 * EXTENSION_MIN, String(twice.durationMin));
-
-  // The grader has to be told, or extra time is free.
-  const note = concessionNote(base, twice, [
-    { kind: "extend_time", atMin: 30, from: `${base.durationMin} min`, to: `${extended.durationMin} min` },
-    { kind: "extend_time", atMin: 42, from: `${extended.durationMin} min`, to: `${twice.durationMin} min` },
-  ]);
-  check(
-    "time: the grading note reports how much extra was taken",
-    note.includes(`${2 * EXTENSION_MIN} extra minutes`),
-    note.slice(0, 200),
-  );
-  check(
-    "time: names both the original and final budget",
-    note.includes(String(base.durationMin)) && note.includes(String(twice.durationMin)),
-  );
-  // The ceiling is what stops "a bit longer" becoming an open-ended interview.
   check(
     `time: at most ${MAX_EXTENSIONS * EXTENSION_MIN} extra minutes in total`,
     MAX_EXTENSIONS * EXTENSION_MIN === 30,
     String(MAX_EXTENSIONS * EXTENSION_MIN),
   );
+
+  const ext: Concession[] = [
+    { kind: "extend_time", atMin: 30, from: "35 min", to: "40 min" },
+    { kind: "extend_time", atMin: 42, from: "40 min", to: "45 min" },
+  ];
+  check("time: extra time is not a concession", /took no concessions/.test(concessionNote(base, twice, ext)));
   check(
-    "time: and tells the grader to judge against the time actually taken",
-    /ACTUALLY took/.test(note),
+    "time: nor is it weighed as one",
+    !/ACTUALLY took|extra minutes|a real loop would have been called/.test(concessionNote(base, twice, ext)),
   );
-  check(
-    "time: a run with no extension says nothing about extra minutes",
-    !concessionNote(base, base, [
-      { kind: "raise_help", atMin: 5, from: "a", to: "b" },
-    ]).includes("extra minutes"),
-  );
+
+  const t = timingRecord(base, twice, ext, 44);
+  check("time: the record says strict time was on at the start", t.strictAtStart);
+  check("time: and off at the end", !t.strictAtEnd);
+  check("time: from the minute of the first extension", t.relaxedAtMin === 30, String(t.relaxedAtMin));
+  check("time: with the count and the budgets", t.extensions === 2 && t.plannedMin === 35 && t.finalBudgetMin === 45);
+
+  const relaxedNote = timeNote(t);
+  check("time: the grader is told not to count the time against them", /Do NOT count the time taken/.test(relaxedNote));
+  check("time: nor to call it a concession", /do not call the extra time a concession/.test(relaxedNote));
+  check("time: and to state it once, neutrally", /once, neutrally/.test(relaxedNote) && /t\+30m/.test(relaxedNote));
+
+  const strict = timingRecord(base, base, [], 33);
+  check("time: no extension keeps strict time on to the end", strict.strictAtEnd && strict.relaxedAtMin === undefined);
+  check("time: and the grader is told the limit counts", /The limit counts/.test(timeNote(strict)));
+
+  const chosenRelaxed = { ...base, strictTime: false };
+  const relaxedFromStart = timingRecord(chosenRelaxed, chosenRelaxed, [], 50);
+  check("time: relaxed by choice is never strict", !relaxedFromStart.strictAtStart && !relaxedFromStart.strictAtEnd);
+  check("time: and the grader is told so", /chose a relaxed time limit/.test(timeNote(relaxedFromStart)));
+
+  const option = availableConcessions(base).find((o) => o.kind === "extend_time")!;
+  check("time: the +5 button says it costs nothing", /not held against you/.test(option.cost) && /strict time off/i.test(option.cost));
+
+  const a = assessmentSystemPrompt(twice, base, ext, 44);
+  check("time: the grading prompt carries the time section", /## Time/.test(a) && /Do NOT count the time taken/.test(a));
+  check("time: and asks for no concession readout when only time was added", /they took no concessions/.test(a));
+
+  const iv = interviewerSystemPrompt(twice, BANK[0], ext);
+  check("time: the interviewer is not told the candidate eased up", !/has eased the interview/.test(iv));
+
+  check("time: an old config without the setting counts as strict", normalizeConfig({}).strictTime === true);
+  check("time: an explicit relaxed choice survives a reload", normalizeConfig({ strictTime: false }).strictTime === false);
+  check("time: an old session config without it reads as strict", isStrictTime({ strictTime: undefined as unknown as boolean }));
 }
 
 // --- consent before the approach is revealed --------------------------------
@@ -606,6 +632,28 @@ for (const help of Object.keys(HELP_LEVELS) as HelpLevel[]) {
   check("consent/guided: teaching mode is not gated", !/## Help they did not ask for/.test(guided));
   check("consent/guided: and is still allowed to reveal", helpPolicy({ ...DEFAULT_CONFIG, helpLevel: "guided" }).revealApproach);
 
+  // The room: nothing volunteered below teaching mode, enforced in code where it can be.
+  for (const help of GATED) {
+    const cfg = { ...DEFAULT_CONFIG, helpLevel: help };
+    const iv = interviewerSystemPrompt(cfg, q);
+    const rules = helpPolicy(cfg).rules.join("\n");
+    check(`unasked/${help}: the interviewer gets no turn after a test run`, !helpPolicy(cfg).speaksAfterRuns);
+    check(`unasked/${help}: is told it does not volunteer help`, /You do not volunteer help/.test(iv));
+    check(`unasked/${help}: not even when the clock is short`, /not when the clock is short/.test(iv));
+    check(`unasked/${help}: help comes only on request`, /Help is given only when they ask/.test(iv));
+    check(`unasked/${help}: at most a content-free mention that a hint is available`, /with no content, that a hint is there/.test(iv));
+    check(`unasked/${help}: its hints are on request only`, /and only when they ask/.test(iv));
+    check(
+      `unasked/${help}: no rule lets it step in on its own`,
+      !/Only intervene after|Push back on it if it is wrong|When tests fail, you may point/.test(rules),
+    );
+  }
+  check(
+    "unasked/silent: no turn after a test run either",
+    !helpPolicy({ ...DEFAULT_CONFIG, helpLevel: "none", jobLevel: "staff" }).speaksAfterRuns,
+  );
+  check("unasked/guided: teaching mode still reacts to runs", helpPolicy({ ...DEFAULT_CONFIG, helpLevel: "guided" }).speaksAfterRuns);
+
   // Silent has nothing to offer in the first place.
   const silent = interviewerSystemPrompt({ ...DEFAULT_CONFIG, helpLevel: "none", jobLevel: "staff" }, q);
   check("consent/silent: a band with no hints offers nothing", !/## Help they did not ask for/.test(silent));
@@ -641,18 +689,20 @@ for (const help of Object.keys(HELP_LEVELS) as HelpLevel[]) {
   const balancedGrade = assessmentSystemPrompt({ ...DEFAULT_CONFIG, helpLevel: "balanced" });
   check(
     "consent: help they asked for is still subtracted",
-    /Help they sought/.test(balancedGrade) && /Subtract it/.test(balancedGrade),
+    /help they sought/i.test(balancedGrade) && /Subtract it/.test(balancedGrade),
   );
   check(
     "consent: saying yes to an offer counts as asking",
-    /said yes to an offer/.test(balancedGrade),
+    /CANDIDATE \[accepted an offer of help\]" are requests/.test(balancedGrade),
   );
-  check(
-    "consent: guided grading does not get the exemption",
-    !/establish WHO ASKED[\s\S]*Help nobody asked for/.test(
-      assessmentSystemPrompt({ ...DEFAULT_CONFIG, helpLevel: "guided", jobLevel: "intern" }),
-    ),
-  );
+  // Changed on request: help nobody asked for is never charged, in any band,
+  // teaching mode included. Guided may still teach unasked; it just cannot bill.
+  const guidedGrade = assessmentSystemPrompt({ ...DEFAULT_CONFIG, helpLevel: "guided", jobLevel: "intern" });
+  check("consent: guided grading gets the exemption too", /Help nobody asked for is the interview's error, not the candidate's, in every band/.test(guidedGrade));
+  check("consent: the grader is told the app labelled every turn", /the app has labelled every turn/.test(balancedGrade) && /UNPROMPTED/.test(balancedGrade));
+  check("consent: a clarifying question is not a request for help", /clarifying question about the problem has not asked for help/.test(balancedGrade));
+  check("consent: \"interviewer assistance\" may not be held against them", /do NOT describe "interviewer assistance"/.test(balancedGrade));
+  check("consent: every charge must be listed and is checked", /List in chargedHelp every piece of help/.test(balancedGrade) && /"chargedHelp"/.test(balancedGrade));
 }
 
 console.log(`\n${failures} problem(s).`);

@@ -3,6 +3,9 @@ import {
   gradingBar,
   concessionNote,
   describeConcession,
+  easingConcessions,
+  timingRecord,
+  timeNote,
   HELP_LEVELS,
   JOB_LEVELS,
   DIFFICULTIES,
@@ -36,22 +39,22 @@ export function interviewerSystemPrompt(
   const policy = helpPolicy(config);
   const level = JOB_LEVELS[config.jobLevel];
 
-  const tappedOut = concessions.length
+  const eased = easingConcessions(concessions);
+  const tappedOut = eased.length
     ? `
 
 ## The candidate has eased the interview
 They asked for it to be made easier mid-session:
-${concessions.map((c) => `- ${describeConcession(c)}`).join("\n")}
+${eased.map((c) => `- ${describeConcession(c)}`).join("\n")}
 
 Your rules above ALREADY reflect the new settings — follow them as written. Acknowledge the change once, briefly and without judgement, then carry on. Do not console them, do not congratulate them, and do not raise it again. It is recorded for the write-up; it is not your business in the room.`
     : "";
 
   /**
-   * The candidate chose a help level; below the coaching band that choice means
-   * the approach is theirs to find. An interviewer that hands it over anyway
-   * makes a decision the candidate never got to make, and then the write-up
-   * discounts them for it — being marked down for something outside their
-   * control. So below that band, revealing is an offer, not an act.
+   * Below teaching mode, help is the candidate's to ask for. An interviewer
+   * that volunteers it makes a choice the candidate never got to make, and the
+   * write-up then charged them for "needing" it. So: nothing volunteered, and
+   * the big moves need an explicit yes even when they ask.
    */
   const consent =
     policy.revealApproach || policy.hintBudget === 0
@@ -59,22 +62,24 @@ Your rules above ALREADY reflect the new settings — follow them as written. Ac
       : `
 
 ## Help they did not ask for
-Three moves take the problem away from the candidate: naming the algorithm or the data structure, laying out the approach, and ${
+You do not volunteer help. Not a hint, not a missing case, not a remark about their code or their tests, not whether their approach is right — not when they go quiet, not when they are heading somewhere wasteful, not when the clock is short. A neutral question asking them to explain their own thinking is fine; anything that carries a signal about what to do is help.
+
+This is not politeness. Help the candidate did not choose is help they cannot decline, and afterwards nobody can tell whether they needed it. Volunteering it takes the problem off them, and it is recorded against the interview, not against them.
+
+Help is given only when they ask: pressing the Hint button, which reaches you as "Can I get a hint?", or asking you outright. Answer those on your band's ladder as written, one rung per request.
+
+Three moves need more than a request: naming the algorithm or the data structure, laying out the approach, and ${
           policy.pointOutBugs
             ? "pointing at the exact line with the bug"
             : "identifying the bug for them"
-        }. At this setting you may not make any of them on your own initiative — not when they go quiet, not when they are heading somewhere wasteful, not when the clock is short.
-
-This is not politeness. Help the candidate did not choose is help they cannot decline, and afterwards nobody can tell whether they needed it. Volunteering it takes the problem off them and then costs them in the write-up for a choice that was yours.
-
-If you think they need it, OFFER it in one sentence, and say where it lands:
+        }. If a request would take you there, OFFER it in one sentence, and say where it lands:
   "Do you want me to point you at the technique? I'd note in the write-up that it came from me."
 Then stop and wait for their answer.
 - A yes is a yes: give it properly, no half measures once they have accepted.
 - Anything that is not a yes is a no — silence, "let me try one more thing", or simply carrying on with their own idea. Do not ask again for several turns, and do not offer more than twice in the whole interview.
 - If they decline, they have chosen to keep the problem. That is theirs to choose, including when you can see what it will cost them.
 
-Two things already count as asking and need no offer: pressing the Hint button, which reaches you as "Can I get a hint?", and asking you outright. Answer those on your band's ladder as written.
+If they are clearly stuck and have not asked, you may say once, with no content, that a hint is there if they want one. That is the most you may do unasked.
 
 If you do slip and hand over something unasked, say so plainly in the same turn instead of glossing it. The write-up can discount help it knows about; it cannot discount help that reads as the candidate's own work.`;
 
@@ -105,7 +110,7 @@ ${question.followUps.map((f) => `- ${f}`).join("\n")}
 ## Your helpfulness setting
 Setting: ${HELP_LEVELS[config.helpLevel].label} (${HELP_LEVELS[config.helpLevel].blurb})
 Calibrated for ${level.label}, this yields a help score of ${policy.score}/100 — band: ${policy.band}.
-Hints you may volunteer across the whole interview: ${policy.hintBudget === 99 ? "unlimited" : policy.hintBudget}.
+Hints you may give across the whole interview: ${policy.hintBudget === 99 ? "unlimited" : policy.hintBudget}${policy.band === "coaching" ? "" : ", and only when they ask"}.
 
 Rules for this band — follow them strictly, they are the point of the exercise:
 ${policy.rules.map((r) => `- ${r}`).join("\n")}${consent}
@@ -144,7 +149,7 @@ export function turnContext(args: {
   const policy = helpPolicy(args.config);
   return `[Interview state — not visible to the candidate]
 Elapsed: ${Math.round(args.elapsedMin)} min of ${args.config.durationMin}.
-Hints you have already volunteered: ${args.hintsUsed} of ${
+Hints given so far: ${args.hintsUsed} of ${
     policy.hintBudget === 99 ? "unlimited" : policy.hintBudget
   }.
 
@@ -160,8 +165,10 @@ export function assessmentSystemPrompt(
   config: InterviewConfig,
   original: InterviewConfig = config,
   concessions: Concession[] = [],
+  usedMin = config.durationMin,
 ): string {
   const bar = gradingBar(config);
+  const eased = easingConcessions(concessions);
   const level = JOB_LEVELS[config.jobLevel];
 
   return `You are the engineer who just ran this coding interview, writing the debrief you submit to your company's hiring committee. You have the full transcript, the candidate's final code, and every test run they made.
@@ -178,6 +185,9 @@ ${bar.helpNote}
 
 ## Concessions
 ${concessionNote(original, config, concessions)}
+
+## Time
+${timeNote(timingRecord(original, config, concessions, usedMin))}
 
 ## The 1-5 scale, at this bar
 ${bar.scaleAnchors.join("\n")}
@@ -269,12 +279,17 @@ Return ONLY a JSON object, no prose around it, matching exactly:
   "coaching": ["concrete things to practise before a real interview"],
   "levelReadout": "which level this performance actually maps to, and why — name the level above and below only if it clarifies",
   "helpAdjustment": "how much of the outcome belonged to the interviewer rather than the candidate, and how that moved the verdict",
+  "chargedHelp": [
+    { "atMin": 12, "what": "what the interviewer supplied that you held against them", "request": "their words asking for it, or \"Hint button\"" }
+  ],
   "concessionReadout": "${
-    concessions.length
+    eased.length
       ? "what the concessions cost them, including what this would have read as at the original bar"
       : "an empty string — they took no concessions"
   }"
 }
+
+chargedHelp is an empty array when you held no help against them.
 
 The timeline should have one entry per meaningful moment — stating an approach, starting to code, each test run, each hint, each course correction, the finish — in chronological order, using the minute offsets given to you.`;
 }

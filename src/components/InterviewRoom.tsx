@@ -49,6 +49,8 @@ import {
   JOB_LEVELS,
   EXTENSION_MIN,
   MAX_EXTENSIONS,
+  easingConcessions,
+  isStrictTime,
   type ConcessionOption,
 } from "@/lib/policy";
 import {
@@ -619,7 +621,10 @@ export default function InterviewRoom() {
       at: Date.now(),
       elapsedMs: readElapsed(),
     });
-    await converse("run", question, config);
+    // Outside teaching mode the interviewer does not get a turn after a run.
+    // That unprompted turn is where unrequested advice came from; if they want
+    // a reaction, they can ask.
+    if (helpPolicy(config).speaksAfterRuns) await converse("run", question, config);
   };
 
   /**
@@ -653,7 +658,14 @@ export default function InterviewRoom() {
     if (!question || !config || streaming) return;
     hintsRef.current += 1;
     setHintsUsed(hintsRef.current);
-    pushMessage({ id: uid(), role: "user", content: "Can I get a hint?", at: Date.now(), elapsedMs: readElapsed() });
+    pushMessage({
+      id: uid(),
+      role: "user",
+      content: "Can I get a hint?",
+      hintRequest: true,
+      at: Date.now(),
+      elapsedMs: readElapsed(),
+    });
     await converse("hint", question, config);
   };
 
@@ -728,6 +740,20 @@ export default function InterviewRoom() {
     setConcessions(concessionsRef.current);
     setConfig(next);
     setEaseOpen(false);
+    if (option.kind === "extend_time") {
+      // Not easing up: just more time. No interviewer turn, nothing to discuss.
+      pushMessage({
+        id: uid(),
+        role: "user",
+        content: `Added ${EXTENSION_MIN} minutes (${option.from} → ${option.to})${
+          isStrictTime(config) ? " — strict time is off for the rest of this interview, without penalty" : ""
+        }`,
+        event: "phase",
+        at: Date.now(),
+        elapsedMs: readElapsed(),
+      });
+      return;
+    }
     pushMessage({
       id: uid(),
       role: "user",
@@ -961,6 +987,8 @@ export default function InterviewRoom() {
   const extendOption = allConcessions.find((o) => o.kind === "extend_time");
   const easeOptions = allConcessions.filter((o) => o.kind !== "extend_time");
   const extensionsTaken = concessions.filter((c) => c.kind === "extend_time").length;
+  const eased = easingConcessions(concessions);
+  const strictTime = isStrictTime(config);
   // Paused blocks every action that would advance the interview; ending it is
   // deliberately still allowed.
   const frozen = paused || streaming || running;
@@ -981,20 +1009,30 @@ export default function InterviewRoom() {
           {JOB_LEVELS[config.jobLevel].label.split(" (")[0]} · {config.difficulty} ·{" "}
           {HELP_LEVELS[config.helpLevel].label} ({policy.score}/100)
         </span>
-        {concessions.length > 0 && (
+        {eased.length > 0 && (
           <span
             className="rounded border border-[var(--warn)]/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--warn)]"
-            title={concessions.map((c) => `${c.from} → ${c.to}`).join("; ")}
+            title={eased.map((c) => `${c.from} → ${c.to}`).join("; ")}
           >
-            eased ×{concessions.length}
+            eased ×{eased.length}
           </span>
         )}
 
         <span
-          className={`ml-auto flex items-center gap-1.5 text-sm tabular-nums ${
+          className="ml-auto rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]"
+          title={
+            strictTime
+              ? "Strict time: the limit counts. Pressing +5 turns it off, without penalty."
+              : "Relaxed time: the limit is a pacing guide; taking longer is not held against you."
+          }
+        >
+          {strictTime ? "strict time" : "relaxed time"}
+        </span>
+        <span
+          className={`flex items-center gap-1.5 text-sm tabular-nums ${
             paused
               ? "text-[var(--muted)]/60"
-              : overtime
+              : overtime && strictTime
                 ? "text-[var(--warn)]"
                 : "text-[var(--muted)]"
           }`}
@@ -1013,7 +1051,11 @@ export default function InterviewRoom() {
                 ? "border-[var(--warn)]/60 bg-[var(--warn)]/10 text-[var(--warn)]"
                 : "text-[var(--muted)] hover:text-[var(--text)]"
             }`}
-            title={`Adds ${EXTENSION_MIN} minutes (${extensionsTaken} of ${MAX_EXTENSIONS} used). Recorded with the minute you asked, and the review judges the work against the time it actually took.`}
+            title={`Adds ${EXTENSION_MIN} minutes (${extensionsTaken} of ${MAX_EXTENSIONS} used). ${
+              strictTime
+                ? "Turns strict time off for the rest of this interview. The report says so; the extra time is not held against you."
+                : "The extra time is not held against you."
+            }`}
           >
             +{EXTENSION_MIN}m
           </button>

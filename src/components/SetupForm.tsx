@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CLOCK_MODES,
+  TIME_MODES,
+  isStrictTime,
   DIFFICULTIES,
   HELP_LEVELS,
   JOB_LEVELS,
@@ -281,6 +283,14 @@ export default function SetupForm() {
             }))}
             value={config.clockMode}
             onChange={(v) => set("clockMode", v)}
+          />
+        </Field>
+
+        <Field label="Time limit" hint={TIME_MODES[isStrictTime(config) ? "strict" : "relaxed"].blurb}>
+          <Segmented
+            options={(["strict", "relaxed"] as const).map((k) => ({ value: k, label: TIME_MODES[k].label }))}
+            value={isStrictTime(config) ? "strict" : "relaxed"}
+            onChange={(v) => set("strictTime", v === "strict")}
           />
         </Field>
 

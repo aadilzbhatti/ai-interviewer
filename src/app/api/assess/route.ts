@@ -1,7 +1,8 @@
 import { anthropic, MODEL, tryExtractJson } from "@/lib/anthropic";
 import { assessmentSystemPrompt } from "@/lib/prompts";
 import { reconcileAssessment } from "@/lib/verdict";
-import { JOB_LEVELS, HELP_LEVELS, helpPolicy } from "@/lib/policy";
+import { JOB_LEVELS, HELP_LEVELS, helpPolicy, timingRecord, isStrictTime } from "@/lib/policy";
+import { checkChargedHelp, labelMessages, speakerTag } from "@/lib/assistance";
 import { stagesFromText } from "@/lib/gradingProgress";
 import { logDebug } from "@/lib/debugLog";
 import { guardStream, ndjsonSender } from "@/lib/streamSafe";
@@ -57,11 +58,10 @@ export async function POST(req: Request) {
   const policy = helpPolicy(body.config);
   const lastRun = body.runs[body.runs.length - 1];
 
-  const transcript = body.messages
-    .map(
-      (m) =>
-        `[${offset(m.elapsedMs, m.at, startedAt)}] ${m.role === "user" ? "CANDIDATE" : "INTERVIEWER"}: ${m.content}`,
-    )
+  // Every turn says who it was answering, as recorded by the app, so the grader
+  // does not have to guess whether help was asked for.
+  const transcript = labelMessages(body.messages)
+    .map(({ message: m, label }) => `[${offset(m.elapsedMs, m.at, startedAt)}] ${speakerTag(label)}: ${m.content}`)
     .join("\n\n");
 
   const runLog = body.runs
@@ -86,8 +86,9 @@ Question source: ${
       : body.config.source
   }
 Clock: ${body.config.clockMode === "strict" ? "strict — it ran continuously" : "pausable"}
+Time limit: ${isStrictTime(body.config) ? "strict — the limit counts" : "relaxed — the limit was a pacing guide (see ## Time)"}
 Interviewer helpfulness setting: ${HELP_LEVELS[body.config.helpLevel].label} (effective help score ${policy.score}/100, band "${policy.band}")
-Hints the candidate explicitly asked for: ${body.hintsUsed}
+Times the candidate pressed the Hint button: ${body.hintsUsed}
 Private runs of their own code (scratchpad): ${body.scratchRuns ?? 0}
 Time used: ${Math.round(body.elapsedMin)} of ${body.config.durationMin} minutes
 Language: ${body.config.language}
@@ -131,14 +132,23 @@ ${transcript || "(no conversation)"}`;
     body.config,
     body.originalConfig ?? body.config,
     body.concessions ?? [],
+    body.elapsedMin,
   );
+  // Facts the app owns. Attached to the result whatever the grader writes.
+  const facts = {
+    timing: timingRecord(body.originalConfig ?? body.config, body.config, body.concessions ?? [], body.elapsedMin),
+    check: (a: Assessment) => checkChargedHelp(a.chargedHelp, body.messages, startedAt),
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const out = guardStream(controller);
       const send = ndjsonSender(out);
       try {
-        await runAssessment(system, userContent, send);
+        await runAssessment(system, userContent, send, (a) => {
+          const { kept, struck } = facts.check(a);
+          return { ...a, chargedHelp: kept, struckHelp: struck.length ? struck : undefined, timing: facts.timing };
+        });
       } catch (e) {
         send({ type: "error", message: e instanceof Error ? e.message : String(e) });
       } finally {
@@ -164,7 +174,12 @@ type Emit = (event: Record<string, unknown>) => void;
  * driven by a timer through a 75-second silence, is the thing that makes a
  * working app look like a hung one.
  */
-async function runAssessment(system: string, userContent: string, send: Emit): Promise<void> {
+async function runAssessment(
+  system: string,
+  userContent: string,
+  send: Emit,
+  addFacts: (a: Assessment) => Assessment,
+): Promise<void> {
   const gradingStartedAt = Date.now();
   send({ type: "phase", stage: "read" });
 
@@ -218,7 +233,7 @@ async function runAssessment(system: string, userContent: string, send: Emit): P
     if (!assessment) throw new Error(parseError || "The grader returned no usable JSON.");
     // The scores-to-verdict rules are stated in the prompt, but a prompt is a
     // request. This is where they are actually applied.
-    const reconciled = reconcileAssessment(assessment);
+    const reconciled = addFacts(reconcileAssessment(assessment));
     send({ type: "result", assessment: reconciled });
   } catch (e) {
     await logDebug({

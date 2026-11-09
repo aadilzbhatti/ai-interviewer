@@ -3,7 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { VERDICTS, VERDICT_LABELS, describeConcession } from "@/lib/policy";
+import { VERDICTS, VERDICT_LABELS, describeConcession, easingConcessions } from "@/lib/policy";
 import { normalizeScore } from "@/lib/verdict";
 import type {
   Assessment,
@@ -12,8 +12,23 @@ import type {
   Language,
   Question,
   TimelineEntry,
+  TimingRecord,
   Verdict,
 } from "@/lib/types";
+
+const mins = (m: number) => `t+${String(Math.max(0, Math.round(m))).padStart(2, "0")}m`;
+
+/** The clock, in the app's words rather than the grader's, so it is always said. */
+function timingSentence(t: TimingRecord): string {
+  const used = `You used ${Math.round(t.usedMin)} of ${t.finalBudgetMin} minutes`;
+  if (t.strictAtEnd) return `Strict time was on throughout. ${used}, and the limit counted.`;
+  if (t.strictAtStart) {
+    return `Strict time was turned off at ${mins(t.relaxedAtMin ?? 0)} when you added time (${t.extensions} × 5 min; planned ${t.plannedMin}). ${used}. The extra time was not held against you.`;
+  }
+  return `Relaxed time: the ${t.plannedMin}-minute plan was a pacing guide. ${used}${
+    t.extensions ? `, including ${t.extensions} × 5 min you added` : ""
+  }. Time taken was not held against you.`;
+}
 
 const VERDICT_COLOR: Record<Verdict, string> = {
   strong_hire: "var(--ok)",
@@ -102,6 +117,32 @@ export default function AssessmentReport({
               commentary below are exactly as the grader wrote them — only the headline verdict moved.
             </p>
           </div>
+        )}
+        {assessment.struckHelp && assessment.struckHelp.length > 0 && (
+          <div className="mt-4 rounded-xl border border-[var(--warn)]/40 bg-[var(--warn)]/5 p-3.5">
+            <div className="text-xs font-medium tracking-wider text-[var(--warn)] uppercase">
+              Help charged that you did not ask for
+            </div>
+            <ul className="mt-1.5 space-y-1 text-sm leading-relaxed">
+              {assessment.struckHelp.map((h, i) => (
+                <li key={i}>
+                  <span className="tabular-nums text-[var(--muted)]">{mins(h.atMin)}</span> {h.what}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
+              The grader held this against you, but the transcript shows no request from you at that
+              point: no Hint button and no question asking for help. Help you did not ask for is not
+              supposed to count. It is struck here; read the scores below knowing they may still
+              reflect it.
+            </p>
+          </div>
+        )}
+        {assessment.timing && (
+          <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
+            <span className="mr-1.5 text-[11px] font-medium uppercase tracking-wider">Time</span>
+            {timingSentence(assessment.timing)}
+          </p>
         )}
         {assessment.barJudgedAgainst && (
           <p className="mt-5 border-l-2 pl-3 text-sm leading-relaxed text-[var(--muted)]">
@@ -252,12 +293,12 @@ export default function AssessmentReport({
         )}
       </div>
 
-      {(concessions.length > 0 || assessment.concessionReadout) && (
+      {(easingConcessions(concessions).length > 0 || assessment.concessionReadout) && (
         <Section title="Where you eased up">
           <div className="rounded-xl border border-[var(--warn)]/30 bg-[var(--panel)] p-4">
-            {concessions.length > 0 && (
+            {easingConcessions(concessions).length > 0 && (
               <ul className="mb-3 space-y-1.5">
-                {concessions.map((c, i) => (
+                {easingConcessions(concessions).map((c, i) => (
                   <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
                     <span className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--warn)]" />
                     <span>{describeConcession(c)}</span>
