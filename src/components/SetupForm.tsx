@@ -59,8 +59,8 @@ const SEED_PLACEHOLDER =
 
 const BAND_COPY: Record<string, string> = {
   silent: "The interviewer will not help you at all. Expect long silences.",
-  sparse: "You will get a nudge only after you are genuinely stuck.",
-  responsive: "A realistic interview: engaged, willing to unblock, and it will question your choices.",
+  sparse: "Mostly silent. Hints only when you ask for one, and the smallest that unblocks you.",
+  responsive: "A realistic interview: engaged and conversational, but it never volunteers help. Hints only when you ask.",
   coaching: "A teaching session. The interviewer will walk you through it step by step.",
 };
 

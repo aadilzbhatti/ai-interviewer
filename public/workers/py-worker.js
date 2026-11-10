@@ -20,7 +20,7 @@ function getPyodide() {
 
 function getHarness() {
   if (!harnessPromise) {
-    harnessPromise = fetch("/workers/harness.py").then((r) => r.text());
+    harnessPromise = fetch("harness.py").then((r) => r.text());
   }
   return harnessPromise;
 }

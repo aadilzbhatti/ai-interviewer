@@ -4,7 +4,7 @@
  * modes a candidate will actually hit. Run with: npm run validate:workers
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 
@@ -38,7 +38,7 @@ function runJsWorker(q: Question, code: string): Reply {
   ctx.globalThis = ctx;
   vm.createContext(ctx);
   ctx.importScripts = (p: string) =>
-    vm.runInContext(readFileSync(path.join(root, "public", p), "utf8"), ctx);
+    vm.runInContext(readFileSync(path.join(root, "public", p.startsWith("/") ? p : `workers/${p}`), "utf8"), ctx);
   vm.runInContext(readFileSync(path.join(root, "public/workers/js-worker.js"), "utf8"), ctx);
   const handler = ctx.onmessage as (ev: { data: unknown }) => void;
   handler({
@@ -725,7 +725,7 @@ function scratchJs(code: string, call?: string): ScratchReply {
   ctx.globalThis = ctx;
   vm.createContext(ctx);
   ctx.importScripts = (p: string) =>
-    vm.runInContext(readFileSync(path.join(root, "public", p), "utf8"), ctx);
+    vm.runInContext(readFileSync(path.join(root, "public", p.startsWith("/") ? p : `workers/${p}`), "utf8"), ctx);
   vm.runInContext(readFileSync(path.join(root, "public/workers/js-worker.js"), "utf8"), ctx);
   (ctx.onmessage as (ev: { data: unknown }) => void)({ data: { mode: "scratch", code, call } });
   if (!reply) throw new Error("worker never posted a message");
@@ -851,6 +851,28 @@ async function pyWorkerChecks() {
   });
   check("py-worker/tests: a normal run is unaffected", tested.ok && (tested.results?.length ?? 0) === 1, JSON.stringify(tested).slice(0, 160));
   check("py-worker/tests: and reports no scratch fields", !tested.hasValue && !tested.phase, JSON.stringify(tested).slice(0, 160));
+}
+
+// --- served under a sub-path --------------------------------------------------
+// On the Mac mini the app lives at /interviewer, because the hostname's root
+// belongs to another service. Next prefixes routes and its own assets, but not
+// a plain fetch("/api/...") or new Worker("/workers/..."): one of those goes to
+// the other service and fails. Every such path goes through withBase(), and the
+// workers load their siblings relative to their own URL.
+{
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+      d.isDirectory() ? walk(path.join(dir, d.name)) : /\.(ts|tsx|js)$/.test(d.name) ? [path.join(dir, d.name)] : [],
+    );
+  const files = [...walk(path.join(root, "src")), ...walk(path.join(root, "public/workers"))];
+  const ROOTED = /\b(fetch|new Worker|importScripts|EventSource)\(\s*["'`]\//;
+  const offenders = files.filter((f) => ROOTED.test(readFileSync(f, "utf8"))).map((f) => path.relative(root, f));
+  check("base path: no fetch or worker URL is rooted at /", offenders.length === 0, offenders.join(", "));
+  check(
+    "base path: workers load their siblings relative to themselves",
+    /importScripts\("compare\.js"\)/.test(readFileSync(path.join(root, "public/workers/js-worker.js"), "utf8")) &&
+      /fetch\("harness\.py"\)/.test(readFileSync(path.join(root, "public/workers/py-worker.js"), "utf8")),
+  );
 }
 
 void (async () => {

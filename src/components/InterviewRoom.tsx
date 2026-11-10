@@ -22,6 +22,7 @@ import {
 import { pickFromBank } from "@/lib/questions/index";
 import { buildSolutionFile, solutionLocation } from "@/lib/solutionFile";
 import { initClientDebug } from "@/lib/clientDebug";
+import { withBase } from "@/lib/basePath";
 import GenerationProgress from "@/components/GenerationProgress";
 import GradingProgress from "@/components/GradingProgress";
 import { type ProgressState } from "@/lib/generationProgress";
@@ -87,7 +88,7 @@ async function streamAssessment(
   payload: unknown,
   onEvent: (event: GradingEvent) => void,
 ): Promise<{ assessment?: Assessment; error?: string }> {
-  const res = await fetch("/api/assess", {
+  const res = await fetch(withBase("/api/assess"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -274,7 +275,7 @@ export default function InterviewRoom() {
       setStreaming(true);
       noteBreadcrumb(`interviewer turn (${trigger})`);
       try {
-        const res = await fetch("/api/interviewer", {
+        const res = await fetch(withBase("/api/interviewer"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -693,7 +694,7 @@ export default function InterviewRoom() {
       setSaveMessage("Saving…");
 
       try {
-        const res = await fetch("/api/solutions/save", {
+        const res = await fetch(withBase("/api/solutions/save"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

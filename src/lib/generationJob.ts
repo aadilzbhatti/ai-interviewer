@@ -25,6 +25,7 @@ import {
 } from "./generationProgress";
 import { checkSoundness } from "./exec/soundness";
 import { saveQuestion } from "./store";
+import { withBase } from "./basePath";
 import { noteBreadcrumb } from "./crashWatch";
 import type { InterviewConfig, Question, VetVerdict } from "./types";
 
@@ -277,7 +278,7 @@ export async function streamGeneration(
   /** Aborting it closes the connection, which is what ends the model call. */
   signal?: AbortSignal,
 ): Promise<{ question?: Question; verdict?: VetVerdict; error?: string }> {
-  const res = await fetch("/api/questions/generate", {
+  const res = await fetch(withBase("/api/questions/generate"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

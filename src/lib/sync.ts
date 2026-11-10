@@ -25,8 +25,9 @@ import {
   type LocalChange,
 } from "./store";
 import { shouldTakeRemote, type Collection, type Envelope } from "./syncModel";
+import { withBase } from "./basePath";
 
-const ENDPOINT = "/api/storage";
+const ENDPOINT = withBase("/api/storage");
 const PULL_EVERY_MS = 60_000;
 /** Quiet period after a change before pushing, and the most a busy editor waits. */
 const DEBOUNCE_MS = 2_000;

@@ -1,5 +1,5 @@
-importScripts("/workers/compare.js");
-importScripts("/workers/names.js");
+importScripts("compare.js");
+importScripts("names.js");
 
 /**
  * How far `new Function` shifts the line numbers it reports.

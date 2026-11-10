@@ -1,8 +1,9 @@
+import { withBase } from "../basePath";
 import type { Language, Question, RunResult, ScratchResult, TestCaseResult } from "../types";
 
 const WORKER_SRC: Record<Language, string> = {
-  python: "/workers/py-worker.js",
-  javascript: "/workers/js-worker.js",
+  python: withBase("/workers/py-worker.js"),
+  javascript: withBase("/workers/js-worker.js"),
 };
 
 const workers: Partial<Record<Language, Worker>> = {};

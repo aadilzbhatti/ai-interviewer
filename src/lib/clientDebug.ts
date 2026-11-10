@@ -1,3 +1,4 @@
+import { withBase } from "./basePath";
 /**
  * Client half of the debug log. Silent and free when the server says logging
  * is off, which is the normal case.
@@ -7,7 +8,7 @@ let enabled: boolean | null = null;
 export async function initClientDebug(): Promise<boolean> {
   if (enabled !== null) return enabled;
   try {
-    const res = await fetch("/api/debug/log");
+    const res = await fetch(withBase("/api/debug/log"));
     const data = (await res.json()) as { enabled?: boolean };
     enabled = !!data.enabled;
   } catch {
@@ -18,7 +19,7 @@ export async function initClientDebug(): Promise<boolean> {
 
 export function clientDebugLog(phase: string, data: unknown): void {
   if (enabled !== true) return;
-  void fetch("/api/debug/log", {
+  void fetch(withBase("/api/debug/log"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ route: "client", phase, data }),
@@ -33,7 +34,7 @@ export function clientDebugLog(phase: string, data: unknown): void {
  */
 export function reportCrash(phase: string, data: unknown): void {
   try {
-    void fetch("/api/debug/log", {
+    void fetch(withBase("/api/debug/log"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ route: "client", phase, data, crash: true }),
