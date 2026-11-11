@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import CodeEditor from "@/components/CodeEditor";
 import ChatPanel from "@/components/ChatPanel";
@@ -23,6 +23,18 @@ import { pickFromBank } from "@/lib/questions/index";
 import { buildSolutionFile, solutionLocation } from "@/lib/solutionFile";
 import { initClientDebug } from "@/lib/clientDebug";
 import { withBase } from "@/lib/basePath";
+import {
+  DEFAULT_LAYOUT,
+  PANEL_LABELS,
+  closePanel,
+  columns,
+  normalizeLayout,
+  openPanel,
+  toggleMaximize,
+  visiblePanels,
+  type PanelId,
+  type PanelLayout,
+} from "@/lib/panelLayout";
 import GenerationProgress from "@/components/GenerationProgress";
 import GradingProgress from "@/components/GradingProgress";
 import { type ProgressState } from "@/lib/generationProgress";
@@ -169,6 +181,23 @@ export default function InterviewRoom() {
     () => resumed?.originalConfig ?? resumed?.config ?? loadConfig(),
   );
   const [concessions, setConcessions] = useState<Concession[]>(resumed?.concessions ?? []);
+  // Which panels are on screen. A per-browser viewing preference, so plain
+  // localStorage rather than the synced store.
+  const [layout, setLayoutState] = useState<PanelLayout>(() => {
+    try {
+      return normalizeLayout(JSON.parse(window.localStorage.getItem(LAYOUT_KEY) ?? "null"));
+    } catch {
+      return DEFAULT_LAYOUT;
+    }
+  });
+  const setLayout = useCallback((next: PanelLayout) => {
+    setLayoutState(next);
+    try {
+      window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(next));
+    } catch {
+      /* a full or blocked storage only costs remembering the layout */
+    }
+  }, []);
   const [easeOpen, setEaseOpen] = useState(false);
   const resumedStrict = !!resumed && resumed.config?.clockMode === "strict";
   const resumedCode =
@@ -873,7 +902,7 @@ export default function InterviewRoom() {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={() => void buildQuestion(config, false)}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[#04121f] hover:brightness-110"
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
           >
             Try again
           </button>
@@ -990,6 +1019,10 @@ export default function InterviewRoom() {
   const extensionsTaken = concessions.filter((c) => c.kind === "extend_time").length;
   const eased = easingConcessions(concessions);
   const strictTime = isStrictTime(config);
+  const shown = visiblePanels(layout);
+  const cols = columns(layout);
+  const isShown = (p: PanelId) => shown.includes(p);
+  const controlsFor = (p: PanelId) => <PanelControls id={p} layout={layout} onChange={setLayout} />;
   // Paused blocks every action that would advance the interview; ending it is
   // deliberately still allowed.
   const frozen = paused || streaming || running;
@@ -1141,7 +1174,7 @@ export default function InterviewRoom() {
           <button
             onClick={handleGrade}
             disabled={streaming || running || phase === "grading"}
-            className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[#04121f] disabled:opacity-40"
+            className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] disabled:opacity-40"
           >
             {phase === "grading" ? "Grading…" : "End & grade"}
           </button>
@@ -1170,7 +1203,40 @@ export default function InterviewRoom() {
         </div>
       )}
 
-      <main className="relative grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      {(layout.maximized || layout.closed.length > 0) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-[var(--panel)] px-4 py-1.5 text-xs">
+          {layout.maximized ? (
+            <>
+              <span className="text-[var(--muted)]">{PANEL_LABELS[layout.maximized]} is full screen</span>
+              <button
+                onClick={() => setLayout(toggleMaximize(layout, layout.maximized!))}
+                className="rounded-md border px-2 py-0.5 text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                Exit full screen
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-[var(--muted)]">Closed:</span>
+              {layout.closed.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setLayout(openPanel(layout, p))}
+                  className="rounded-md border px-2 py-0.5 text-[var(--muted)] hover:text-[var(--text)]"
+                >
+                  Show {PANEL_LABELS[p].toLowerCase()}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      <main
+        className={`relative grid min-h-0 flex-1 grid-cols-1 ${
+          cols.left && cols.right ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" : ""
+        }`}
+      >
         {paused && <PauseCurtain elapsedMs={elapsedMsNow} restored={!everResumed} onResume={resume} />}
         {runWarning && (
           <RunWarning
@@ -1185,8 +1251,22 @@ export default function InterviewRoom() {
             }}
           />
         )}
-        <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
-          <QuestionCard question={question} verdict={verdict} />
+        {/* Panels are hidden, never unmounted: see panelLayout.ts. */}
+        <section
+          className={`min-h-0 flex-col ${cols.left ? "flex" : "hidden"} ${
+            cols.right ? "border-b lg:border-b-0 lg:border-r" : ""
+          }`}
+        >
+          <div className={isShown("prompt") ? `flex flex-col ${isShown("chat") ? "" : "min-h-0 flex-1"}` : "hidden"}>
+            <QuestionCard
+              question={question}
+              verdict={verdict}
+              fill={!isShown("chat")}
+              controls={controlsFor("prompt")}
+            />
+          </div>
+          <div className={isShown("chat") ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <PanelHeader title="Chat">{controlsFor("chat")}</PanelHeader>
           <ChatPanel
             messages={messages}
             streaming={streaming}
@@ -1204,9 +1284,13 @@ export default function InterviewRoom() {
             }
             onSend={handleSend}
           />
+          </div>
         </section>
 
-        <section className="flex min-h-0 flex-col">
+        <section className={`min-h-0 flex-col ${cols.right ? "flex" : "hidden"}`}>
+          <PanelHeader title={`Code · ${config.language === "python" ? "Python" : "JavaScript"}`}>
+            {controlsFor("editor")}
+          </PanelHeader>
           <div className="min-h-0 flex-1">
             <CodeEditor
               language={config.language}
@@ -1280,6 +1364,64 @@ export default function InterviewRoom() {
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+const LAYOUT_KEY = "mock-interviewer:layout";
+
+function PanelHeader({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b bg-[var(--panel)] py-1 pl-4 pr-2">
+      <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted)]">{title}</span>
+      <span className="ml-auto" />
+      {children}
+    </div>
+  );
+}
+
+/** Full screen and close, for one panel. */
+function PanelControls({
+  id,
+  layout,
+  onChange,
+}: {
+  id: PanelId;
+  layout: PanelLayout;
+  onChange: (l: PanelLayout) => void;
+}) {
+  const full = layout.maximized === id;
+  const label = PANEL_LABELS[id].toLowerCase();
+  const btn =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]";
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => onChange(toggleMaximize(layout, id))}
+        className={btn}
+        title={full ? "Exit full screen" : `Full screen ${label}`}
+        aria-label={full ? "Exit full screen" : `Full screen ${label}`}
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {full ? (
+            <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+          ) : (
+            <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+          )}
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(closePanel(layout, id))}
+        className={btn}
+        title={`Close ${label}`}
+        aria-label={`Close ${label}`}
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+          <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -1367,7 +1509,7 @@ function RunWarning({
         <div className="mt-5 flex flex-wrap gap-2">
           <button
             onClick={onDiscuss}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[#04121f] hover:brightness-110"
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
           >
             Let me explain first
           </button>
@@ -1419,7 +1561,7 @@ function PauseCurtain({
         </p>
         <button
           onClick={onResume}
-          className="mt-5 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-[#04121f] hover:brightness-110"
+          className="mt-5 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
         >
           Resume
         </button>

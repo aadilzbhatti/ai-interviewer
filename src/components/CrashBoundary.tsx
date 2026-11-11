@@ -45,7 +45,7 @@ export default class CrashBoundary extends React.Component<
           </pre>
           <button
             onClick={() => window.location.reload()}
-            className="mt-5 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-[#04121f] hover:brightness-110"
+            className="mt-5 rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
           >
             Reload and carry on
           </button>

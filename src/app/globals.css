@@ -12,6 +12,34 @@
   --ok: #3fb950;
   --bad: #f85149;
   --warn: #d29922;
+  /* Leaning hire: between --ok and --muted. */
+  --ok-soft: #7bb661;
+  /* Text on an --accent button. */
+  --on-accent: #04121f;
+  /* Code blocks and test output: one step darker than the panel they sit in. */
+  --code-bg: #0b0f14;
+  --scroll: #2a3644;
+}
+
+/* Follows the system. Every token above has a light counterpart here. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f4;
+    --line: #d5dbe1;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #0969da;
+    --ok: #1a7f37;
+    --bad: #cf222e;
+    --warn: #9a6700;
+    --ok-soft: #4f8a2f;
+    --on-accent: #ffffff;
+    --code-bg: #f3f5f7;
+    --scroll: #c4ccd4;
+  }
 }
 
 html,
@@ -35,7 +63,7 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a3644;
+  background: var(--scroll);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-track {
@@ -61,7 +89,7 @@ body {
   margin: 0.2em 0;
 }
 .prose-chat code {
-  background: #0b0f14;
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.1em 0.35em;
@@ -69,7 +97,7 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .prose-chat pre {
-  background: #0b0f14;
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.75rem;
@@ -89,7 +117,7 @@ body {
 }
 .prose-chat strong {
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
 }
 .prose-chat table {
   border-collapse: collapse;

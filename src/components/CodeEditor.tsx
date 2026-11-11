@@ -46,6 +46,7 @@ export default function CodeEditor({
   readOnly?: boolean;
 }) {
   const edRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const dark = usePrefersDark();
   /** The last text the editor itself produced, so its own echo is ignored. */
   const emitted = useRef(value);
   /** Captured once: what the model is created with. Later changes go through the effect. */
@@ -79,7 +80,7 @@ export default function CodeEditor({
   return (
     <Monaco
       language={language === "python" ? "python" : "javascript"}
-      theme="vs-dark"
+      theme={dark ? "vs-dark" : "light"}
       defaultValue={initial}
       onChange={handleChange}
       onMount={(ed) => {
@@ -105,4 +106,18 @@ export default function CodeEditor({
       }}
     />
   );
+}
+
+/** Follows the system light/dark setting live, like the rest of the page. */
+function usePrefersDark(): boolean {
+  const [dark, setDark] = useState(
+    () => typeof window === "undefined" || window.matchMedia("(prefers-color-scheme: dark)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return dark;
 }

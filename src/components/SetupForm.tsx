@@ -165,7 +165,7 @@ export default function SetupForm() {
               </div>
               <button
                 onClick={() => router.push("/interview")}
-                className="shrink-0 rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[#04121f] hover:brightness-110"
+                className="shrink-0 rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:brightness-110"
               >
                 Resume
               </button>
@@ -326,7 +326,7 @@ export default function SetupForm() {
         <button
           onClick={start}
           disabled={!canStart}
-          className="w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-medium text-[#04121f] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-medium text-[var(--on-accent)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Start interview
         </button>
@@ -376,7 +376,7 @@ export default function SetupForm() {
               {job.status === "done" && job.question && (
                 <button
                   onClick={() => startSavedQuestion(job.question!.id)}
-                  className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[#04121f] hover:brightness-110"
+                  className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:brightness-110"
                 >
                   Start interview
                 </button>

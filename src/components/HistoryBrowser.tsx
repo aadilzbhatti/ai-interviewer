@@ -38,7 +38,7 @@ const VERDICT_TONE: Record<string, string> = {
   strong_hire: "var(--ok)",
   leaning_strong_hire: "var(--ok)",
   hire: "var(--ok)",
-  leaning_hire: "#7bb661",
+  leaning_hire: "var(--ok-soft)",
   neutral: "var(--muted)",
   leaning_no_hire: "var(--warn)",
   no_hire: "var(--bad)",
@@ -290,7 +290,7 @@ export default function HistoryBrowser() {
                         }
                         void restore(b);
                       }}
-                      className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[#04121f] hover:brightness-110"
+                      className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] hover:brightness-110"
                     >
                       Restore
                     </button>
@@ -376,7 +376,7 @@ export default function HistoryBrowser() {
           </p>
           <button
             onClick={() => router.push("/")}
-            className="mt-5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[#04121f] hover:brightness-110"
+            className="mt-5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
           >
             Start one
           </button>

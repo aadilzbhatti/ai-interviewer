@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
@@ -33,12 +33,31 @@ export default function ChatPanel({
   // A fixed one-row box silently swallowed anything longer than a line: the
   // text scrolled out of reach with no way to get back to it mid-thought.
   // Grow with the content up to a ceiling, then let it scroll.
-  useEffect(() => {
+  const fit = useCallback(() => {
     const el = draftRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, DRAFT_MAX_PX)}px`;
-  }, [draft]);
+  }, []);
+  useEffect(fit, [draft, fit]);
+  // Measured while the box had no settled width (on mount, or while its panel
+  // was hidden), the placeholder wraps a word per line and the empty box sticks
+  // at the ceiling. Refit whenever the width changes: full screen, a closed
+  // panel coming back, a window resize. Height changes from fit() itself keep
+  // the width, so this cannot loop.
+  useEffect(() => {
+    const el = draftRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth !== width) {
+        width = el.clientWidth;
+        fit();
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fit]);
 
   const submit = () => {
     const text = draft.trim();
@@ -106,7 +125,7 @@ export default function ChatPanel({
           <button
             onClick={submit}
             disabled={disabled || !draft.trim()}
-            className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[#04121f] disabled:opacity-30"
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--on-accent)] disabled:opacity-30"
           >
             Send
           </button>

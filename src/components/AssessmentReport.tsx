@@ -34,7 +34,7 @@ const VERDICT_COLOR: Record<Verdict, string> = {
   strong_hire: "var(--ok)",
   leaning_strong_hire: "var(--ok)",
   hire: "var(--ok)",
-  leaning_hire: "#7bb661",
+  leaning_hire: "var(--ok-soft)",
   neutral: "var(--muted)",
   leaning_no_hire: "var(--warn)",
   no_hire: "var(--bad)",
@@ -358,7 +358,7 @@ export default function AssessmentReport({
       {onRestart && (
         <button
           onClick={onRestart}
-          className="mt-4 w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-medium text-[#04121f] hover:brightness-110"
+          className="mt-4 w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-medium text-[var(--on-accent)] hover:brightness-110"
         >
           Run another interview
         </button>

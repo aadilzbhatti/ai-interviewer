@@ -87,7 +87,7 @@ export default function TestResults({
                 </span>
               </button>
               {open === key && (
-                <div className="space-y-2 border-t bg-[#0b0f14] px-4 py-3 font-mono text-xs">
+                <div className="space-y-2 border-t bg-[var(--code-bg)] px-4 py-3 font-mono text-xs">
                   {!r.hidden && r.args && <Row label="input" value={r.args} />}
                   {r.error ? (
                     <Row label="error" value={r.error} tone="bad" />
